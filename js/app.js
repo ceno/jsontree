@@ -345,28 +345,143 @@
     return nodeEl;
   }
 
-  function toggleNode(nodeEl, box) {
-    const childrenEl = nodeEl.querySelector(':scope > .tree-children');
-    if (!childrenEl) return;
-    const isCollapsed = childrenEl.classList.contains('collapsed');
-    if (isCollapsed) {
+  // ----------------------------------------------------------------
+  // Slide animation for expand/collapse
+  // ----------------------------------------------------------------
+  const nodeAnimMap = new WeakMap(); // nodeEl → { raf, expanding, childrenEl, inner, box }
+  const ANIM_DURATION = 250;
+
+  function easeOut(t) {
+    return 1 - (1 - t) * (1 - t);
+  }
+
+  // Cancel ongoing animation and jump to its end state immediately.
+  function finishAnimInstantly(nodeEl) {
+    const anim = nodeAnimMap.get(nodeEl);
+    if (!anim) return;
+    cancelAnimationFrame(anim.raf);
+    const { expanding, childrenEl, inner, box } = anim;
+    // Move children back out of the temporary wrapper
+    while (inner.firstChild) {
+      childrenEl.appendChild(inner.firstChild);
+    }
+    inner.remove();
+    childrenEl.style.overflow = '';
+    childrenEl.style.height = '';
+    if (expanding) {
       childrenEl.classList.remove('collapsed');
       box.textContent = '−';
     } else {
       childrenEl.classList.add('collapsed');
       box.textContent = '+';
     }
+    nodeAnimMap.delete(nodeEl);
+  }
+
+  // Start an animated expand (expanding=true) or collapse (expanding=false).
+  function startAnim(nodeEl, box, expanding) {
+    const childrenEl = nodeEl.querySelector(':scope > .tree-children');
+    if (!childrenEl) return;
+
+    if (expanding) {
+      // Remove display:none before measuring natural height.
+      // The height:0 below prevents a visible flash since JS is sync before paint.
+      childrenEl.classList.remove('collapsed');
+    }
+
+    const H = childrenEl.scrollHeight;
+    if (H === 0) {
+      // Nothing to animate (empty container)
+      if (!expanding) childrenEl.classList.add('collapsed');
+      box.textContent = expanding ? '−' : '+';
+      return;
+    }
+
+    // Set up overflow clip on the children container
+    childrenEl.style.overflow = 'hidden';
+    childrenEl.style.height = (expanding ? 0 : H) + 'px';
+
+    // Wrap all child nodes in a temporary div so we can apply the Y offset
+    const inner = document.createElement('div');
+    inner.style.marginTop = (expanding ? -H : 0) + 'px';
+    while (childrenEl.firstChild) {
+      inner.appendChild(childrenEl.firstChild);
+    }
+    childrenEl.appendChild(inner);
+
+    // Update expander symbol immediately
+    box.textContent = expanding ? '−' : '+';
+
+    const startTime = performance.now();
+    let rafId;
+
+    function frame(now) {
+      const elapsed = now - startTime;
+      const t = Math.min(1, elapsed / ANIM_DURATION);
+      const f = easeOut(t);
+
+      // h = clip height; offset = (h - H) so bottom of content tracks bottom of clip
+      const h = Math.round(H * (expanding ? f : 1 - f));
+      const offset = h - H;
+
+      childrenEl.style.height = h + 'px';
+      inner.style.marginTop = offset + 'px';
+
+      if (t < 1) {
+        rafId = requestAnimationFrame(frame);
+        nodeAnimMap.get(nodeEl).raf = rafId;
+      } else {
+        // Animation complete — restore static layout
+        while (inner.firstChild) {
+          childrenEl.appendChild(inner.firstChild);
+        }
+        inner.remove();
+        childrenEl.style.overflow = '';
+        childrenEl.style.height = '';
+        if (!expanding) {
+          childrenEl.classList.add('collapsed');
+        }
+        nodeAnimMap.delete(nodeEl);
+      }
+    }
+
+    rafId = requestAnimationFrame(frame);
+    nodeAnimMap.set(nodeEl, { raf: rafId, expanding, childrenEl, inner, box });
+  }
+
+  function toggleNode(nodeEl, box) {
+    const childrenEl = nodeEl.querySelector(':scope > .tree-children');
+    if (!childrenEl) return;
+
+    if (nodeAnimMap.has(nodeEl)) {
+      // Mid-animation: jump to end state, then start the reverse animation
+      const wasExpanding = nodeAnimMap.get(nodeEl).expanding;
+      finishAnimInstantly(nodeEl);
+      startAnim(nodeEl, box, !wasExpanding);
+      return;
+    }
+
+    const isCollapsed = childrenEl.classList.contains('collapsed');
+    startAnim(nodeEl, box, isCollapsed);
   }
 
   function expandAncestors(rowEl) {
-    // Walk up through DOM to expand all collapsed ancestors
-    let el = rowEl.parentElement; // tree-children or tree-node
+    // Walk up through DOM to expand all collapsed ancestors — always instant (no animation)
+    // so that search jumps are immediate.
+    let el = rowEl.parentElement;
     while (el && el !== treeContainer) {
-      if (el.classList.contains('tree-children') && el.classList.contains('collapsed')) {
-        el.classList.remove('collapsed');
+      if (el.classList.contains('tree-children')) {
         const parentNode = el.parentElement;
-        const box = parentNode.querySelector(':scope > .tree-row .expander-box');
-        if (box) box.textContent = '−';
+        // If this ancestor is mid-animation, finish it instantly first
+        if (nodeAnimMap.has(parentNode)) {
+          finishAnimInstantly(parentNode);
+        }
+        // Now expand if still collapsed
+        if (el.classList.contains('collapsed')) {
+          el.classList.remove('collapsed');
+          const box = parentNode.querySelector(':scope > .tree-row .expander-box');
+          if (box) box.textContent = '−';
+        }
       }
       el = el.parentElement;
     }

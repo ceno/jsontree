@@ -119,6 +119,7 @@ test('7. Valid JSON builds correct tree with proper labels', async ({ page }) =>
 
 // ----------------------------------------------------------------
 // 8. Expand/collapse via expander; deeper levels hidden until expanded
+//    (uses Playwright's built-in polling to tolerate the 250ms slide animation)
 // ----------------------------------------------------------------
 test('8. Expand and collapse via expander box', async ({ page }) => {
   await page.goto('/');
@@ -138,12 +139,73 @@ test('8. Expand and collapse via expander box', async ({ page }) => {
   const expander = addressRow.locator('.expander-box');
   await expander.click();
 
-  // Now geo (still collapsed) should be visible
+  // geo should become visible as animation reveals it (Playwright polls up to 5s)
   await expect(geoLabel).toBeVisible();
 
-  // Collapse again
+  // Collapse again — polls until display:none is applied after animation ends (~250ms)
   await expander.click();
-  await expect(geoLabel).not.toBeVisible();
+  await expect(geoLabel).not.toBeVisible({ timeout: 2000 });
+});
+
+// ----------------------------------------------------------------
+// 16. Animation cleanup: no leftover inline styles after completion;
+//     rapid double-toggle leaves tree in correct final state
+// ----------------------------------------------------------------
+test('16. Expand animation leaves no inline styles; rapid-toggle resolves cleanly', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#json-input').fill(SAMPLE_JSON);
+  await page.locator('#tab-viewer').click();
+
+  const addressRow = page.locator('.tree-row', { has: page.locator('.tree-label', { hasText: /^address$/ }) });
+  const expander = addressRow.locator('.expander-box');
+  const geoLabel = page.locator('.tree-label', { hasText: /^geo$/ });
+
+  // --- Part a: expand, let animation finish, verify clean DOM ---
+  await expander.click();
+  await expect(geoLabel).toBeVisible();
+  // Wait comfortably past the 250ms animation duration
+  await page.waitForTimeout(400);
+
+  // No leftover inline height or overflow on the children container
+  const inlineStylesAfterExpand = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('.tree-label')].find(l => l.textContent === 'address');
+    if (!label) return 'not-found';
+    const childrenEl = label.closest('.tree-node').querySelector(':scope > .tree-children');
+    if (!childrenEl) return 'no-children';
+    return (childrenEl.style.height || '') + '|' + (childrenEl.style.overflow || '');
+  });
+  expect(inlineStylesAfterExpand).toBe('|');
+
+  // No temporary animation wrapper div should remain — first child must be .tree-node
+  const hasSpuriousWrapper = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('.tree-label')].find(l => l.textContent === 'address');
+    if (!label) return false;
+    const childrenEl = label.closest('.tree-node').querySelector(':scope > .tree-children');
+    if (!childrenEl || !childrenEl.firstChild) return false;
+    return !childrenEl.firstChild.classList.contains('tree-node');
+  });
+  expect(hasSpuriousWrapper).toBe(false);
+
+  // --- Part b: rapid double-toggle (interrupt mid-animation, start reverse) ---
+  // Click 1: start collapse animation
+  await expander.click();
+  // Click 2: immediately interrupt before 250ms — net result: back to expanded
+  await expander.click();
+
+  // Wait for the second animation to complete
+  await page.waitForTimeout(400);
+
+  // Must be fully expanded with no leftover styles
+  await expect(geoLabel).toBeVisible();
+
+  const inlineStylesAfterRapid = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('.tree-label')].find(l => l.textContent === 'address');
+    if (!label) return 'not-found';
+    const childrenEl = label.closest('.tree-node').querySelector(':scope > .tree-children');
+    if (!childrenEl) return 'no-children';
+    return (childrenEl.style.height || '') + '|' + (childrenEl.style.overflow || '');
+  });
+  expect(inlineStylesAfterRapid).toBe('|');
 });
 
 // ----------------------------------------------------------------
