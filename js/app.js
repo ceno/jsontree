@@ -245,7 +245,7 @@
     if (rootChildren) {
       rootChildren.classList.remove('collapsed');
       const expander = rootEl.querySelector('.expander-box');
-      if (expander) expander.textContent = '−';
+      if (expander) setExpanderGlyph(expander, true);
     }
   }
 
@@ -257,6 +257,13 @@
   // isLastSibling: true → this node is the last child of its parent → corner elbow
   //                false → it has a following sibling → tee elbow
   //                (root always gets tc-root with no lines regardless)
+  // The +/− glyph is drawn with CSS pseudo-elements (pixel-exact centring);
+  // these classes are the sole source of truth for the symbol shown.
+  function setExpanderGlyph(box, expanded) {
+    box.classList.toggle('minus', expanded);
+    box.classList.toggle('plus', !expanded);
+  }
+
   function createNodeEl(key, value, depth, parentData, ancestorLineMask, isLastSibling) {
     const type = getType(value);
     const isContainer = type === 'object' || type === 'array';
@@ -289,7 +296,7 @@
     if (isContainer) {
       const box = document.createElement('span');
       box.className = 'expander-box';
-      box.textContent = '+';
+      setExpanderGlyph(box, false);
       box.addEventListener('click', (e) => {
         e.stopPropagation();
         toggleNode(nodeEl, box);
@@ -387,10 +394,10 @@
     childrenEl.style.height = '';
     if (expanding) {
       childrenEl.classList.remove('collapsed');
-      box.textContent = '−';
+      setExpanderGlyph(box, true);
     } else {
       childrenEl.classList.add('collapsed');
-      box.textContent = '+';
+      setExpanderGlyph(box, false);
     }
     nodeAnimMap.delete(nodeEl);
   }
@@ -410,7 +417,7 @@
     if (H === 0) {
       // Nothing to animate (empty container)
       if (!expanding) childrenEl.classList.add('collapsed');
-      box.textContent = expanding ? '−' : '+';
+      setExpanderGlyph(box, expanding);
       return;
     }
 
@@ -427,7 +434,7 @@
     childrenEl.appendChild(inner);
 
     // Update expander symbol immediately
-    box.textContent = expanding ? '−' : '+';
+    setExpanderGlyph(box, expanding);
 
     const startTime = performance.now();
     let rafId;
@@ -494,7 +501,7 @@
         if (el.classList.contains('collapsed')) {
           el.classList.remove('collapsed');
           const box = parentNode.querySelector(':scope > .tree-row .expander-box');
-          if (box) box.textContent = '−';
+          if (box) setExpanderGlyph(box, true);
         }
       }
       el = el.parentElement;

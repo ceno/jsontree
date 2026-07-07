@@ -443,18 +443,34 @@ html, body {
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   width: 9px;
   height: 9px;
   border: 1px solid #999;
   background: #fff;
-  font-size: 11px;
-  line-height: 1;
-  color: #333;
   cursor: pointer;
   user-select: none;
+}
+
+/* +/− drawn as 1px bars, pixel-centred in the 7px inner box
+   (text glyphs sit visually low because of baseline metrics) */
+.expander-box::before {
+  content: '';
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: 3px;
+  height: 1px;
+  background: #333;
+}
+
+.expander-box.plus::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: 3px;
+  width: 1px;
+  background: #333;
 }
 
 /* Type icons */
