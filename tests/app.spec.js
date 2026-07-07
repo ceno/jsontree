@@ -401,3 +401,61 @@ test('15. Empty textarea with Viewer tab shows no error and empty tree', async (
   const treeRows = page.locator('#tree-container .tree-row');
   await expect(treeRows).toHaveCount(0);
 });
+
+// ----------------------------------------------------------------
+// 17. Tree connector line structure: tee/corner/pass-through classes
+//     (a) root row has tc-root, no tee/corner
+//     (b) last root child has tc-corner; non-last has tc-tee
+//     (c) pass-through column for a LAST ancestor has no has-line;
+//         pass-through column for a NON-LAST ancestor has has-line
+// ----------------------------------------------------------------
+test('17. Tree connector line structure is correct', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#json-input').fill(SAMPLE_JSON);
+  await page.locator('#tab-viewer').click();
+
+  // (a) Root row: exactly one .tc column (the root column), class tc-root, no tee/corner
+  const rootRow = page.locator('.tree-row').first();
+  const rootTcCols = rootRow.locator('.tc');
+  await expect(rootTcCols).toHaveCount(1);
+  await expect(rootTcCols.first()).toHaveClass(/tc-root/);
+  const rootElbowClass = await rootTcCols.first().getAttribute('class');
+  expect(rootElbowClass).not.toMatch(/tc-tee|tc-corner/);
+
+  // (b) SAMPLE_JSON root children in order: name, age, active, score, address, tags
+  //     Last root child = "tags" → tc-corner
+  //     "name" (first, non-last) → tc-tee
+  const tagsRow = page.locator('.tree-row', { has: page.locator('.tree-label', { hasText: /^tags$/ }) });
+  const tagsElbow = tagsRow.locator('.tc-elbow');
+  await expect(tagsElbow).toHaveClass(/tc-corner/);
+
+  const nameRow = page.locator('.tree-row', { has: page.locator('.tree-label', { hasText: /^name : "John"$/ }) });
+  const nameElbow = nameRow.locator('.tc-elbow');
+  await expect(nameElbow).toHaveClass(/tc-tee/);
+
+  // (c) Expand "tags" (LAST root child) and check its children's depth-1 pass-through column
+  //     Tags children have ancestorLineMask[1] = false (tags is last) → no has-line on col index 1
+  const tagsExpander = tagsRow.locator('.expander-box');
+  await tagsExpander.click();
+  const adminLabel = page.locator('.tree-label', { hasText: /^0 : "admin"$/ });
+  await expect(adminLabel).toBeVisible();
+
+  const adminRow = page.locator('.tree-row', { has: adminLabel });
+  // depth=2 → columns: [tc-pass col0, tc-pass col1, tc-elbow]
+  // col1 (nth(1)) corresponds to the depth-1 ancestor = tags (LAST → no line)
+  const adminPassCol1 = adminRow.locator('.tc').nth(1);
+  const adminPassCol1Class = await adminPassCol1.getAttribute('class');
+  expect(adminPassCol1Class).not.toContain('has-line');
+
+  // Expand "address" (NON-LAST root child) and check its children's depth-1 pass-through column
+  //     Address children have ancestorLineMask[1] = true (address is non-last) → has-line on col index 1
+  const addressRow = page.locator('.tree-row', { has: page.locator('.tree-label', { hasText: /^address$/ }) });
+  await addressRow.locator('.expander-box').click();
+  const streetLabel = page.locator('.tree-label', { hasText: /^street :/ });
+  await expect(streetLabel).toBeVisible();
+
+  const streetRow = page.locator('.tree-row', { has: streetLabel });
+  // col1 (nth(1)) = depth-1 ancestor = address (NON-LAST → has line)
+  const streetPassCol1 = streetRow.locator('.tc').nth(1);
+  await expect(streetPassCol1).toHaveClass(/has-line/);
+});

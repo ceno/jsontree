@@ -372,7 +372,9 @@ html, body {
 }
 
 /* ============================================================
-   Tree nodes
+   Tree nodes — elbow connector lines
+   Column width: 18px, center at x=9. Row height: 18px, center at y=9.
+   Lines use repeating-linear-gradient for 1px-on/1px-off dotted pattern.
    ============================================================ */
 .tree-node {
   position: relative;
@@ -396,38 +398,51 @@ html, body {
   background: #dfe8f6;
 }
 
-/* Indent spacers carry the dotted lines */
-.tree-indent {
+/* Base column — every indent/elbow cell in a tree row */
+.tc {
   display: inline-flex;
   width: 18px;
   height: 18px;
   flex-shrink: 0;
-  position: relative;
+  position: relative; /* needed for absolutely-positioned expander-box */
 }
 
-/* Vertical dotted connector lines */
-.tree-indent.has-line::before {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 0;
-  bottom: 0;
-  width: 0;
-  border-left: 1px dotted #c0c0c0;
+/* Pass-through column: full-height vertical line when ancestor has a following sibling */
+.tc-pass.has-line {
+  background:
+    repeating-linear-gradient(to bottom, #c0c0c0 0, #c0c0c0 1px, transparent 1px, transparent 2px)
+    9px 0 / 1px 100% no-repeat;
 }
 
-/* Expander box */
-.tree-expander {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  margin-right: 1px;
+/* Tee — node has a following sibling:
+   full-height vertical at x=9 + horizontal stub from x=9 to right edge at y=8 */
+.tc-tee {
+  background:
+    repeating-linear-gradient(to bottom, #c0c0c0 0, #c0c0c0 1px, transparent 1px, transparent 2px)
+      9px 0 / 1px 100% no-repeat,
+    repeating-linear-gradient(to right,  #c0c0c0 0, #c0c0c0 1px, transparent 1px, transparent 2px)
+      9px 8px / 9px 1px no-repeat;
 }
 
+/* Corner — last child:
+   vertical from top down to row centre (9px) + same horizontal stub */
+.tc-corner {
+  background:
+    repeating-linear-gradient(to bottom, #c0c0c0 0, #c0c0c0 1px, transparent 1px, transparent 2px)
+      9px 0 / 1px 9px no-repeat,
+    repeating-linear-gradient(to right,  #c0c0c0 0, #c0c0c0 1px, transparent 1px, transparent 2px)
+      9px 8px / 9px 1px no-repeat;
+}
+
+/* Root column: no lines — tc-root carries no background */
+
+/* Expander box — absolutely centred in its column, layered above the gradient lines */
 .expander-box {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -440,11 +455,6 @@ html, body {
   color: #333;
   cursor: pointer;
   user-select: none;
-}
-
-.expander-leaf {
-  width: 16px;
-  display: inline-block;
 }
 
 /* Type icons */

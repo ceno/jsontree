@@ -236,9 +236,11 @@
     }
     if (arguments[0] === null) return;
 
-    const rootEl = createNodeEl('JSON', data, 0, true, null);
+    // Root is the only child at depth 0; treat it as "last sibling" so column 0
+    // propagates no vertical line to its children (root has no following sibling).
+    const rootEl = createNodeEl('JSON', data, 0, null, [], true);
     treeContainer.appendChild(rootEl);
-    // Expand root
+    // Expand root instantly (not user-initiated, so no animation)
     const rootChildren = rootEl.querySelector('.tree-children');
     if (rootChildren) {
       rootChildren.classList.remove('collapsed');
@@ -247,28 +249,43 @@
     }
   }
 
-  function createNodeEl(key, value, depth, isRoot, parentData) {
+  // ancestorLineMask: boolean[] of length `depth`.
+  //   ancestorLineMask[i] = true  → ancestor at depth i has a following sibling
+  //                                  → show full-height vertical line in pass-through column i
+  //   ancestorLineMask[i] = false → ancestor is last child → pass-through column i is blank
+  //
+  // isLastSibling: true → this node is the last child of its parent → corner elbow
+  //                false → it has a following sibling → tee elbow
+  //                (root always gets tc-root with no lines regardless)
+  function createNodeEl(key, value, depth, parentData, ancestorLineMask, isLastSibling) {
     const type = getType(value);
     const isContainer = type === 'object' || type === 'array';
 
     const nodeEl = document.createElement('div');
     nodeEl.className = 'tree-node';
 
-    // Row
+    // ---- Row ----
     const rowEl = document.createElement('div');
     rowEl.className = 'tree-row';
     rowEl.setAttribute('data-depth', depth);
 
-    // Indent spacers with dotted connector lines
+    // Pass-through columns (one per ancestor depth 0..depth-1)
     for (let i = 0; i < depth; i++) {
-      const indent = document.createElement('span');
-      indent.className = 'tree-indent has-line';
-      rowEl.appendChild(indent);
+      const col = document.createElement('span');
+      col.className = 'tc tc-pass' + (ancestorLineMask[i] ? ' has-line' : '');
+      rowEl.appendChild(col);
     }
 
-    // Expander
-    const expanderWrap = document.createElement('span');
-    expanderWrap.className = 'tree-expander';
+    // Elbow column (the node's own indentation column)
+    const elbowCol = document.createElement('span');
+    if (depth === 0) {
+      // Root: no connector lines — just hosts the expander box
+      elbowCol.className = 'tc tc-root';
+    } else {
+      elbowCol.className = 'tc tc-elbow ' + (isLastSibling ? 'tc-corner' : 'tc-tee');
+    }
+
+    // Expander box lives inside the elbow column, absolutely centred
     if (isContainer) {
       const box = document.createElement('span');
       box.className = 'expander-box';
@@ -277,13 +294,11 @@
         e.stopPropagation();
         toggleNode(nodeEl, box);
       });
-      expanderWrap.appendChild(box);
-    } else {
-      const leaf = document.createElement('span');
-      leaf.className = 'expander-leaf';
-      expanderWrap.appendChild(leaf);
+      elbowCol.appendChild(box);
     }
-    rowEl.appendChild(expanderWrap);
+    // Leaves: no child element — the horizontal stub is fully visible
+
+    rowEl.appendChild(elbowCol);
 
     // Icon
     const iconEl = document.createElement('span');
@@ -300,7 +315,7 @@
     }
     rowEl.appendChild(labelEl);
 
-    // Store node metadata on the element
+    // Metadata for selection / search
     rowEl._nodeData = {
       key: key,
       value: value,
@@ -310,14 +325,10 @@
       depth: depth
     };
 
-    // Click to select
-    rowEl.addEventListener('click', (e) => {
-      selectRow(rowEl);
-    });
+    rowEl.addEventListener('click', () => selectRow(rowEl));
 
-    // Double-click on container to toggle
     if (isContainer) {
-      rowEl.addEventListener('dblclick', (e) => {
+      rowEl.addEventListener('dblclick', () => {
         const box = rowEl.querySelector('.expander-box');
         if (box) toggleNode(nodeEl, box);
       });
@@ -325,7 +336,7 @@
 
     nodeEl.appendChild(rowEl);
 
-    // Children (lazy: build them but collapse)
+    // ---- Children ----
     if (isContainer) {
       const childrenEl = document.createElement('div');
       childrenEl.className = 'tree-children collapsed';
@@ -334,8 +345,14 @@
         ? value.map((v, i) => [String(i), v])
         : Object.entries(value);
 
-      for (const [k, v] of entries) {
-        const childEl = createNodeEl(k, v, depth + 1, false, value);
+      // The ancestorLineMask for children adds one entry for THIS node:
+      // has line iff this node is NOT the last sibling (a vertical continues downward).
+      const childAncestorLineMask = ancestorLineMask.concat(!isLastSibling);
+
+      for (let idx = 0; idx < entries.length; idx++) {
+        const [k, v] = entries[idx];
+        const childIsLast = (idx === entries.length - 1);
+        const childEl = createNodeEl(k, v, depth + 1, value, childAncestorLineMask, childIsLast);
         childrenEl.appendChild(childEl);
       }
 
