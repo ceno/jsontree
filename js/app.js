@@ -454,10 +454,7 @@
     if (!childrenEl) return;
 
     if (nodeAnimMap.has(nodeEl)) {
-      // Mid-animation: jump to end state, then start the reverse animation
-      const wasExpanding = nodeAnimMap.get(nodeEl).expanding;
-      finishAnimInstantly(nodeEl);
-      startAnim(nodeEl, box, !wasExpanding);
+      // Mid-animation: ignore further toggles until it finishes
       return;
     }
 

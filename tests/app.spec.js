@@ -141,6 +141,8 @@ test('8. Expand and collapse via expander box', async ({ page }) => {
 
   // geo should become visible as animation reveals it (Playwright polls up to 5s)
   await expect(geoLabel).toBeVisible();
+  // Let the expand animation finish — clicks during it are intentionally ignored
+  await page.waitForTimeout(400);
 
   // Collapse again — polls until display:none is applied after animation ends (~250ms)
   await expander.click();
@@ -186,16 +188,22 @@ test('16. Expand animation leaves no inline styles; rapid-toggle resolves cleanl
   });
   expect(hasSpuriousWrapper).toBe(false);
 
-  // --- Part b: rapid double-toggle (interrupt mid-animation, start reverse) ---
+  // --- Part b: rapid double-click — the second click lands mid-animation
+  // and must be IGNORED, so the collapse simply runs to completion ---
   // Click 1: start collapse animation
   await expander.click();
-  // Click 2: immediately interrupt before 250ms — net result: back to expanded
+  // Click 2: immediately, before 250ms — ignored while animating
   await expander.click();
 
-  // Wait for the second animation to complete
+  // Wait for the animation to complete
   await page.waitForTimeout(400);
 
-  // Must be fully expanded with no leftover styles
+  // Must be fully collapsed with no leftover styles
+  await expect(geoLabel).not.toBeVisible();
+
+  // A click after the animation finished works normally again
+  await expander.click();
+  await page.waitForTimeout(400);
   await expect(geoLabel).toBeVisible();
 
   const inlineStylesAfterRapid = await page.evaluate(() => {
