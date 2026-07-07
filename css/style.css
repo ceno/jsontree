@@ -1,0 +1,621 @@
+/* Base reset and layout */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: #ededed;
+  font-family: tahoma, arial, helvetica, sans-serif;
+  font-size: 11px;
+  color: #000;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+}
+
+/* ============================================================
+   Tab strip
+   ============================================================ */
+#tab-strip {
+  display: flex;
+  align-items: flex-end;
+  height: 25px;
+  background: linear-gradient(to bottom, #f0f0f0, #eaeaea);
+  border-bottom: 1px solid #d0d0d0;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px 4px;
+  margin-right: 2px;
+  border: 1px solid #d0d0d0;
+  border-bottom: none;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(to bottom, #f5f5f5, #e5e5e5);
+  font-weight: bold;
+  font-size: 11px;
+  color: #333;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  bottom: -1px;
+}
+
+.tab:hover {
+  background: linear-gradient(to bottom, #fafafa, #ebebeb);
+}
+
+.tab.active {
+  background: linear-gradient(to bottom, #ffffff, #f1f1f1);
+  border-bottom: 1px solid #f1f1f1;
+  z-index: 1;
+  bottom: -1px;
+}
+
+/* ============================================================
+   Panels
+   ============================================================ */
+#panels {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.panel {
+  display: none;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0; left: 0;
+}
+
+.panel.active {
+  display: flex;
+}
+
+/* ============================================================
+   Toolbar (shared)
+   ============================================================ */
+.toolbar {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  background: linear-gradient(to bottom, #f9f9f9, #e3e7e8);
+  border-bottom: 1px solid #d0d0d0;
+  padding: 0 2px;
+  flex-shrink: 0;
+  gap: 1px;
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 1px;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+}
+
+.tb-btn {
+  font-family: tahoma, arial, helvetica, sans-serif;
+  font-size: 11px;
+  color: #444;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 2px 6px;
+  cursor: pointer;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+.tb-btn:hover {
+  border-color: #b9d0ef;
+  background: #eff5fb;
+}
+
+.tb-btn:active {
+  background: #dbeaf8;
+  border-color: #99b8d8;
+}
+
+.tb-sep {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  background: #d0d0d0;
+  margin: 0 2px;
+}
+
+.tb-label {
+  padding: 0 4px;
+  color: #444;
+}
+
+/* ============================================================
+   Text panel: textarea + statusbar
+   ============================================================ */
+#text-toolbar {
+  display: flex;
+  align-items: center;
+}
+
+#json-input {
+  flex: 1;
+  width: 100%;
+  resize: none;
+  font-family: Monaco, Menlo, "Courier New", monospace;
+  font-size: 12px;
+  background: #fff;
+  border: none;
+  border-top: none;
+  outline: none;
+  padding: 4px;
+  color: #000;
+}
+
+#json-input::placeholder {
+  color: #aaa;
+}
+
+#status-bar {
+  height: 20px;
+  background: #ededed;
+  border-top: 1px solid #d0d0d0;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #444;
+}
+
+/* Panel border wrapper */
+#panel-text {
+  border: 1px solid #d0d0d0;
+  border-top: none;
+}
+
+/* ============================================================
+   Viewer panel layout
+   ============================================================ */
+#panel-viewer {
+  border: 1px solid #d0d0d0;
+  border-top: none;
+}
+
+#viewer-inner {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Tree panel */
+#tree-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  overflow: hidden;
+  border-right: 1px solid #d0d0d0;
+}
+
+#tree-container {
+  flex: 1;
+  overflow: auto;
+  background: #fff;
+  padding: 4px 0;
+}
+
+/* Splitter */
+#splitter {
+  width: 5px;
+  background: #ededed;
+  cursor: col-resize;
+  flex-shrink: 0;
+  border-left: 1px solid #d0d0d0;
+  border-right: 1px solid #d0d0d0;
+}
+
+#splitter:hover, #splitter.dragging {
+  background: #d0d8e8;
+}
+
+/* Grid panel */
+#grid-panel {
+  width: 270px;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+#grid-header {
+  display: flex;
+  height: 22px;
+  background: linear-gradient(to bottom, #f9f9f9, #e3e7e8);
+  border-bottom: 1px solid #d0d0d0;
+  flex-shrink: 0;
+}
+
+.grid-header-cell {
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  font-size: 11px;
+  color: #333;
+  cursor: pointer;
+  user-select: none;
+  border-right: 1px solid #d0d0d0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.grid-header-cell:last-child {
+  border-right: none;
+  flex: 1;
+}
+
+#grid-col-name {
+  width: 55%;
+}
+
+#grid-col-value {
+  flex: 1;
+}
+
+.sort-arrow {
+  margin-left: 4px;
+  font-size: 9px;
+}
+
+.sort-arrow.hidden {
+  visibility: hidden;
+}
+
+#grid-body {
+  flex: 1;
+  overflow-y: auto;
+  background: #fff;
+}
+
+.grid-row {
+  display: flex;
+  height: 19px;
+  border-bottom: 1px solid #ededed;
+  font-size: 11px;
+}
+
+.grid-row:last-child {
+  border-bottom: none;
+}
+
+.grid-cell {
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.grid-cell-name {
+  width: 55%;
+  border-right: 1px solid #ededed;
+}
+
+.grid-cell-value {
+  flex: 1;
+}
+
+/* ============================================================
+   Search toolbar
+   ============================================================ */
+#search-toolbar {
+  border-top: 1px solid #d0d0d0;
+  border-bottom: none;
+}
+
+.search-input {
+  width: 150px;
+  height: 18px;
+  font-family: tahoma, arial, helvetica, sans-serif;
+  font-size: 11px;
+  border: 1px solid #a0a0a0;
+  padding: 1px 3px;
+  background: #fff;
+  outline: none;
+}
+
+.search-input:focus {
+  border-color: #6090c8;
+}
+
+/* Arrow icons in search buttons */
+.arrow-down {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid #2a8a2a;
+  vertical-align: middle;
+  margin-left: 2px;
+}
+
+.arrow-up {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-bottom: 5px solid #2a8a2a;
+  vertical-align: middle;
+  margin-left: 2px;
+}
+
+/* ============================================================
+   Tree nodes
+   ============================================================ */
+.tree-node {
+  position: relative;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  height: 18px;
+  cursor: pointer;
+  padding-right: 4px;
+  white-space: nowrap;
+  position: relative;
+}
+
+.tree-row:hover {
+  background: #eef3fc;
+}
+
+.tree-row.selected {
+  background: #dfe8f6;
+}
+
+/* Indent spacers carry the dotted lines */
+.tree-indent {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* Vertical dotted connector lines */
+.tree-indent.has-line::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dotted #c0c0c0;
+}
+
+/* Expander box */
+.tree-expander {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-right: 1px;
+}
+
+.expander-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 9px;
+  height: 9px;
+  border: 1px solid #999;
+  background: #fff;
+  font-size: 11px;
+  line-height: 1;
+  color: #333;
+  cursor: pointer;
+  user-select: none;
+}
+
+.expander-leaf {
+  width: 16px;
+  display: inline-block;
+}
+
+/* Type icons */
+.tree-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-right: 3px;
+}
+
+/* Object icon: {} curly braces SVG */
+.icon-object::before {
+  content: '{}';
+  font-family: tahoma, arial, sans-serif;
+  font-weight: bold;
+  font-size: 11px;
+  color: #000080;
+}
+
+/* Array icon: [] brackets */
+.icon-array::before {
+  content: '[]';
+  font-family: tahoma, arial, sans-serif;
+  font-weight: bold;
+  font-size: 11px;
+  color: #000080;
+}
+
+/* Leaf icons: colored squares */
+.icon-string::before,
+.icon-number::before,
+.icon-boolean::before,
+.icon-null::before {
+  content: '';
+  display: block;
+  width: 9px;
+  height: 9px;
+  border-radius: 1px;
+}
+
+.icon-string::before  { background: #000080; }
+.icon-number::before  { background: #008000; }
+.icon-boolean::before { background: #c8a000; }
+.icon-null::before    { background: #c00000; }
+
+/* Label */
+.tree-label {
+  font-size: 11px;
+  color: #000;
+  font-family: tahoma, arial, helvetica, sans-serif;
+}
+
+/* Children container */
+.tree-children {
+  display: block;
+}
+
+.tree-children.collapsed {
+  display: none;
+}
+
+/* ============================================================
+   Modal dialogs
+   ============================================================ */
+#modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(200, 200, 200, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+#modal-overlay.hidden {
+  display: none;
+}
+
+#modal-window {
+  width: 300px;
+  background: #f0f0f0;
+  border: 1px solid #a0a0a0;
+  border-radius: 4px;
+  box-shadow: 2px 2px 8px rgba(0,0,0,0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#modal-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 22px;
+  background: linear-gradient(to bottom, #f9f9f9, #dde3e8);
+  border-bottom: 1px solid #c0c0c0;
+  padding: 0 6px;
+}
+
+#modal-title {
+  font-weight: bold;
+  font-size: 11px;
+  color: #333;
+}
+
+#modal-close-btn {
+  background: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 11px;
+  color: #555;
+  padding: 1px 4px;
+  border-radius: 2px;
+  line-height: 1;
+}
+
+#modal-close-btn:hover {
+  border-color: #b9d0ef;
+  background: #eff5fb;
+}
+
+#modal-body {
+  display: flex;
+  align-items: flex-start;
+  padding: 16px;
+  gap: 12px;
+  font-size: 11px;
+  color: #333;
+  line-height: 1.5;
+}
+
+#modal-error-icon {
+  flex-shrink: 0;
+}
+
+#modal-error-icon.hidden {
+  display: none;
+}
+
+#modal-message {
+  flex: 1;
+  margin: 0;
+}
+
+#modal-footer {
+  display: flex;
+  justify-content: center;
+  padding: 8px 16px 12px;
+  border-top: 1px solid #d0d0d0;
+}
+
+#modal-ok-btn {
+  font-family: tahoma, arial, helvetica, sans-serif;
+  font-size: 11px;
+  width: 75px;
+  padding: 3px 8px;
+  background: linear-gradient(to bottom, #f5f5f5, #ddd);
+  border: 1px solid #aaa;
+  border-radius: 2px;
+  cursor: pointer;
+  color: #333;
+}
+
+#modal-ok-btn:hover {
+  background: linear-gradient(to bottom, #fff, #e5e5e5);
+  border-color: #888;
+}
+
+#modal-ok-btn:active {
+  background: linear-gradient(to bottom, #ddd, #ccc);
+}
