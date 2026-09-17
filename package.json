@@ -4,7 +4,8 @@
   "description": "A static JSON viewer and formatter",
   "private": true,
   "scripts": {
-    "test": "playwright test"
+    "build:extension": "node scripts/build-extension.js",
+    "test": "npm run build:extension && playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.45.0",

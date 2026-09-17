@@ -1,0 +1,8 @@
+{
+  "name": "John",
+  "age": 30,
+  "active": true,
+  "score": null,
+  "address": { "street": "123 Main St", "city": "Springfield" },
+  "tags": ["admin", "user"]
+}

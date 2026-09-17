@@ -1,5 +1,5 @@
 /* jsontree — app.js */
-(function () {
+var __jsontreeMain = function () {
   'use strict';
 
   // ----------------------------------------------------------------
@@ -696,9 +696,34 @@
   });
 
   // ----------------------------------------------------------------
+  // External API
+  // ----------------------------------------------------------------
+  // Used by the Chrome extension to hand us the document it took over.
+  window.jsontree = {
+    load: function (text) {
+      try {
+        jsonInput.value = JSON.stringify(JSON.parse(text), null, 2);
+      } catch (e) {
+        jsonInput.value = text;
+      }
+      activateTab('viewer');
+    }
+  };
+
+  // ----------------------------------------------------------------
   // Init
   // ----------------------------------------------------------------
   // Text tab is active on page load (already set in HTML via .active on panel-text)
   tabText.classList.add('active');
 
-})();
+};
+
+// The Chrome extension sets __JSONTREE_DEFER__ before this file runs: it has to
+// build the app's DOM itself (the page it takes over has none) before we bind to
+// it, so it calls __jsontreeMain() when the DOM is ready. In index.html the
+// script tag sits at the end of <body>, so we just run.
+if (typeof window !== 'undefined' && window.__JSONTREE_DEFER__) {
+  window.__jsontreeMain = __jsontreeMain;
+} else {
+  __jsontreeMain();
+}
