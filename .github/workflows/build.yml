@@ -1,0 +1,53 @@
+name: Build extension
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set version
+        id: version
+        run: |
+          echo "version=$(date +'%Y.%m.%d')b${{ github.run_number }}" >> $GITHUB_OUTPUT
+          # Chrome only accepts up to four dot-separated integers, so the
+          # manifest carries the same date with the build number as the last
+          # part. The human-readable version goes in version_name.
+          echo "manifest=$(date +'%Y.%-m.%-d').${{ github.run_number }}" >> $GITHUB_OUTPUT
+
+      - name: Build extension
+        run: node scripts/build-extension.js
+
+      - name: Inject version into manifest.json
+        run: |
+          jq --arg v "${{ steps.version.outputs.manifest }}" \
+             --arg n "${{ steps.version.outputs.version }}" \
+             '.version = $v | .version_name = $n' extension/manifest.json > tmp.json
+          mv tmp.json extension/manifest.json
+
+      - name: Package extension
+        run: |
+          mkdir -p dist
+          cp -r extension dist/jsontree
+          cd dist && zip -r "../jsontree-extension-${{ steps.version.outputs.version }}.zip" jsontree -x "*.DS_Store"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: jsontree-extension
+          path: "*.zip"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: jsontree extension ${{ steps.version.outputs.version }}
+          files: "*.zip"
+          generate_release_notes: true
+          make_latest: true
