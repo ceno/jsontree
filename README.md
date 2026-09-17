@@ -33,13 +33,31 @@ build it from this checkout:
    extension directory).
 2. Open `chrome://extensions`, turn on **Developer mode**, click **Load
    unpacked** and pick the `extension/` folder.
-3. For local files: click **Details** on the extension and turn on **Allow
+3. A tab opens asking for site access — click **Enable on all sites**, then
+   **Allow**. Nothing renders until you do; see below for why.
+4. For local files: click **Details** on the extension and turn on **Allow
    access to file URLs**.
-4. For Finder: **Get Info** on any `.json` file → **Open with** → Google
+5. For Finder: **Get Info** on any `.json` file → **Open with** → Google
    Chrome → **Change All**.
 
 Rebuild after editing `index.html`, `css/style.css` or `js/app.js` — `npm test`
 does it for you.
+
+### Why it asks for access
+
+The viewer can only tell a JSON document from an ordinary page by reading
+`document.contentType`, which means running on the page first — and JSON is
+served from any origin, so no match pattern can narrow that down in advance.
+Declaring `<all_urls>` in the manifest would say exactly that, but it also costs
+an in-depth Chrome Web Store review measured in weeks. So the access is optional
+instead: the manifest asks for nothing, `grant.html` requests `*://*/*` at
+runtime, and `background.js` registers the content scripts once you agree. The
+grant persists, so it is one click per machine.
+
+Local files are the exception. Chrome will not grant `file:///*` through
+`permissions.request()`, so that one scheme stays in the manifest as a static
+content script — which is why it needs the **Allow access to file URLs** toggle
+rather than the grant. It does not trigger the broad-host-permission review.
 
 It takes over documents served as `application/json`, `*/*+json`, `text/json`,
 and `text/plain` when the URL ends in `.json`. It backs off and leaves the raw

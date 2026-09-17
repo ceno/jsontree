@@ -1,6 +1,15 @@
 // @ts-check
 // Drives the real extension: Chromium is launched with extension/ loaded, then
 // pointed at a URL that serves JSON.
+//
+// The shipped extension asks for host access at runtime rather than declaring
+// it (see extension/background.js), and the grant is a native dialog Playwright
+// cannot click. So the tests run against a copy of extension/ whose manifest
+// declares the same origins as host_permissions: loading unpacked grants those
+// outright, which puts the browser in exactly the state a real grant produces —
+// chrome.permissions.getAll() reports them, and background.js registers the
+// content scripts off the back of that. The un-granted state gets its own
+// context, and its own test, below.
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -13,7 +22,47 @@ const JSON_URL = 'http://localhost:8080/tests/fixtures/sample.json';
 /** @type {import('@playwright/test').BrowserContext} */
 let context;
 let profileDir;
+let grantedExt;
 let cspServer;
+
+/** A copy of extension/ with the optional host access already granted. */
+function buildGrantedCopy() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jsontree-granted-'));
+  fs.cpSync(EXT, dir, { recursive: true });
+  const manifestPath = path.join(dir, 'manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  manifest.host_permissions = manifest.optional_host_permissions;
+  delete manifest.optional_host_permissions;
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+  return dir;
+}
+
+async function launch(extDir, dirPrefix) {
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), dirPrefix));
+  const ctx = await chromium.launchPersistentContext(profile, {
+    channel: 'chromium',
+    args: [
+      `--disable-extensions-except=${extDir}`,
+      `--load-extension=${extDir}`,
+    ],
+  });
+  return { ctx, profile };
+}
+
+// Registration happens in the service worker, asynchronously, so a navigation
+// can otherwise beat it to the page.
+async function waitForRegistration(ctx, expected) {
+  const sw = ctx.serviceWorkers()[0] || (await ctx.waitForEvent('serviceworker'));
+  await expect
+    .poll(
+      async () =>
+        (await sw.evaluate(() => chrome.scripting.getRegisteredContentScripts()))
+          .length,
+      { timeout: 10000 }
+    )
+    .toBe(expected);
+  return sw;
+}
 
 // API responses often carry a strict CSP. The viewer pulls its stylesheet from
 // the extension, so this checks that the page's CSP does not block it.
@@ -30,20 +79,18 @@ test.beforeAll(async () => {
   });
   await new Promise((resolve) => cspServer.listen(CSP_PORT, resolve));
 
-  profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jsontree-ext-'));
-  context = await chromium.launchPersistentContext(profileDir, {
-    channel: 'chromium',
-    args: [
-      `--disable-extensions-except=${EXT}`,
-      `--load-extension=${EXT}`,
-    ],
-  });
+  grantedExt = buildGrantedCopy();
+  const launched = await launch(grantedExt, 'jsontree-ext-');
+  context = launched.ctx;
+  profileDir = launched.profile;
+  await waitForRegistration(context, 1);
 });
 
 test.afterAll(async () => {
   await context?.close();
   await new Promise((resolve) => cspServer.close(resolve));
   fs.rmSync(profileDir, { recursive: true, force: true });
+  fs.rmSync(grantedExt, { recursive: true, force: true });
 });
 
 test('renders a JSON URL in the tree viewer', async () => {
@@ -86,6 +133,32 @@ test('leaves ordinary pages alone', async () => {
   await expect(page.locator('#tab-text')).toHaveClass(/active/);
   await expect(page.locator('#json-input')).toHaveValue('');
   await page.close();
+});
+
+// The state the extension actually ships in: no host access, so nothing runs.
+// This is what keeps <all_urls> out of the manifest and off the review.
+test('does nothing until host access is granted', async () => {
+  const { ctx, profile } = await launch(EXT, 'jsontree-ungranted-');
+  try {
+    const sw = ctx.serviceWorkers()[0] || (await ctx.waitForEvent('serviceworker'));
+
+    // Onboarding: a fresh install opens the grant page rather than looking broken.
+    await expect
+      .poll(() => ctx.pages().map((p) => p.url()).join(' '), { timeout: 10000 })
+      .toContain('grant.html');
+
+    const page = await ctx.newPage();
+    await page.goto(JSON_URL);
+
+    await expect(page.locator('pre')).toHaveCount(1);
+    await expect(page.locator('#app')).toHaveCount(0);
+    expect(
+      await sw.evaluate(() => chrome.scripting.getRegisteredContentScripts())
+    ).toHaveLength(0);
+  } finally {
+    await ctx.close();
+    fs.rmSync(profile, { recursive: true, force: true });
+  }
 });
 
 test('leaves malformed JSON as raw text', async () => {

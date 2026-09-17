@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>jsontree</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0;
+    padding: 18px 20px 20px;
+    min-width: 320px;
+    max-width: 560px;
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color: #202124;
+    background: #fff;
+  }
+  h1 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+  p { margin: 0 0 12px; color: #5f6368; }
+  #status { font-weight: 600; color: #202124; }
+  #status.on { color: #188038; }
+  #status.off { color: #b3261e; }
+  button {
+    font: inherit;
+    font-weight: 500;
+    padding: 7px 14px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: #1a73e8;
+    color: #fff;
+    cursor: pointer;
+  }
+  button.secondary { background: transparent; color: #1a73e8; border-color: #dadce0; }
+  button:disabled { opacity: .5; cursor: default; }
+  .note { margin-top: 12px; font-size: 12px; color: #5f6368; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  @media (prefers-color-scheme: dark) {
+    body { color: #e8eaed; background: #202124; }
+    p, .note { color: #9aa0a6; }
+    #status { color: #e8eaed; }
+    #status.on { color: #81c995; }
+    #status.off { color: #f28b82; }
+    button.secondary { color: #8ab4f8; border-color: #3c4043; }
+  }
+</style>
+</head>
+<body>
+  <h1>jsontree</h1>
+  <p>Renders JSON documents as a collapsible tree instead of raw text.</p>
+
+  <p>Site access: <span id="status">checking…</span></p>
+
+  <p id="actions">
+    <button id="grant">Enable on all sites</button>
+    <button id="revoke" class="secondary" hidden>Turn off</button>
+  </p>
+
+  <p class="note" id="note"></p>
+
+  <script src="grant.js"></script>
+</body>
+</html>
