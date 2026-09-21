@@ -1,18 +1,142 @@
-/* Base reset and layout */
+/* ============================================================
+   jsontree — "Sonoma" theme
+   A modern macOS system-app skin: unified toolbar, segmented
+   tab control, source-list sidebar, inspector table, alert sheet.
+   Light + dark via prefers-color-scheme. CSS only — DOM untouched.
+   ============================================================ */
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
+:root {
+  --accent: #0A84FF;
+  --accent-pressed: #0a6fd6;
+
+  --bg-window: #ececee;     /* app chrome / letterboxing around the pill tabs */
+  --bg-sidebar: #f5f5f7;    /* tree source-list tint */
+  --bg-content: #ffffff;    /* textarea / grid content */
+  --bg-elevated: #ffffff;   /* raised surfaces: active tab pill, modal */
+  --bg-toolbar: rgba(246, 246, 248, 0.82);
+
+  --text-primary: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-tertiary: #98989d;
+  --text-on-accent: #ffffff;
+
+  --hairline: rgba(0, 0, 0, 0.09);
+  --hairline-strong: rgba(0, 0, 0, 0.14);
+  --row-alt: rgba(0, 0, 0, 0.025);
+  --control-fill: rgba(0, 0, 0, 0.055);
+  --control-fill-hover: rgba(0, 0, 0, 0.075);
+  --control-fill-active: rgba(0, 0, 0, 0.11);
+  --track-fill: rgba(0, 0, 0, 0.065);
+  --connector: rgba(0, 0, 0, 0.1);
+
+  --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.08), 0 1px 1px rgba(0, 0, 0, 0.05);
+  --shadow-sheet: 0 24px 60px rgba(0, 0, 0, 0.28), 0 4px 14px rgba(0, 0, 0, 0.12);
+  --focus-ring: rgba(10, 132, 255, 0.38);
+
+  --danger: #ff3b30;
+  --ok-object: #7d5ac1;
+  --ok-array: #3f8f5f;
+  --ok-string: #c0341f;
+  --ok-number: #1461b0;
+  --ok-boolean: #9a6b00;
+  --ok-null: #8e8e93;
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Mono", Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #0A84FF;
+    --accent-pressed: #3aa0ff;
+
+    --bg-window: #242426;
+    --bg-sidebar: #1e1e20;
+    --bg-content: #1e1e1e;
+    --bg-elevated: #323234;
+    --bg-toolbar: rgba(40, 40, 43, 0.78);
+
+    --text-primary: #f2f2f4;
+    --text-secondary: #a1a1a6;
+    --text-tertiary: #86868b;
+    --text-on-accent: #ffffff;
+
+    --hairline: rgba(255, 255, 255, 0.09);
+    --hairline-strong: rgba(255, 255, 255, 0.14);
+    --row-alt: rgba(255, 255, 255, 0.035);
+    --control-fill: rgba(255, 255, 255, 0.07);
+    --control-fill-hover: rgba(255, 255, 255, 0.1);
+    --control-fill-active: rgba(255, 255, 255, 0.15);
+    --track-fill: rgba(0, 0, 0, 0.25);
+    --connector: rgba(255, 255, 255, 0.12);
+
+    --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 1px rgba(0, 0, 0, 0.3);
+    --shadow-sheet: 0 24px 60px rgba(0, 0, 0, 0.55), 0 4px 14px rgba(0, 0, 0, 0.35);
+    --focus-ring: rgba(58, 160, 255, 0.45);
+
+    --danger: #ff453a;
+    --ok-object: #b295e8;
+    --ok-array: #63d68a;
+    --ok-string: #ff8a70;
+    --ok-number: #6cb4ff;
+    --ok-boolean: #f0c04b;
+    --ok-null: #98989d;
+  }
+}
+
 html, body {
   width: 100%;
   height: 100%;
-  background: #ededed;
-  font-family: tahoma, arial, helvetica, sans-serif;
-  font-size: 11px;
-  color: #000;
+  background: var(--bg-window);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--text-primary);
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+
+/* Thin overlay-style scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--hairline-strong) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--hairline-strong);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.28); background-clip: padding-box; }
+@media (prefers-color-scheme: dark) {
+  *::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); background-clip: padding-box; }
+}
+
+button, input, textarea {
+  font-family: inherit;
+}
+
+button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+  border-radius: 5px;
 }
 
 #app {
@@ -20,48 +144,68 @@ html, body {
   flex-direction: column;
   width: 100%;
   height: 100%;
+  background: var(--bg-window);
 }
 
 /* ============================================================
-   Tab strip
+   Tab strip — macOS segmented control, centered
    ============================================================ */
 #tab-strip {
-  display: flex;
-  align-items: flex-end;
-  height: 25px;
-  background: linear-gradient(to bottom, #f0f0f0, #eaeaea);
-  border-bottom: 1px solid #d0d0d0;
-  padding: 0 4px;
+  position: relative;
+  display: inline-flex;
+  align-self: center;
+  align-items: stretch;
+  height: 24px;
+  gap: 2px;
+  margin: 8px auto;
+  padding: 2px;
+  background: var(--track-fill);
+  border-radius: 7px;
   flex-shrink: 0;
+  z-index: 1;
+}
+
+/* Extend the pill's surrounding band edge-to-edge so the segmented
+   control reads as sitting in real unified-toolbar chrome, not
+   floating in empty space. -100vw is clipped by body's overflow:hidden. */
+#tab-strip::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  bottom: -8px;
+  left: -100vw;
+  right: -100vw;
+  background: var(--bg-toolbar);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid var(--hairline);
+  z-index: -1;
 }
 
 .tab {
   display: inline-flex;
   align-items: center;
-  padding: 3px 10px 4px;
-  margin-right: 2px;
-  border: 1px solid #d0d0d0;
-  border-bottom: none;
-  border-radius: 3px 3px 0 0;
-  background: linear-gradient(to bottom, #f5f5f5, #e5e5e5);
-  font-weight: bold;
-  font-size: 11px;
-  color: #333;
+  justify-content: center;
+  padding: 0 16px;
+  min-width: 72px;
+  border-radius: 5px;
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--text-secondary);
   cursor: pointer;
   user-select: none;
-  position: relative;
-  bottom: -1px;
+  transition: color 0.12s ease;
 }
 
 .tab:hover {
-  background: linear-gradient(to bottom, #fafafa, #ebebeb);
+  color: var(--text-primary);
 }
 
 .tab.active {
-  background: linear-gradient(to bottom, #ffffff, #f1f1f1);
-  border-bottom: 1px solid #f1f1f1;
-  z-index: 1;
-  bottom: -1px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: var(--shadow-elevated);
 }
 
 /* ============================================================
@@ -80,6 +224,7 @@ html, body {
   height: 100%;
   position: absolute;
   top: 0; left: 0;
+  background: var(--bg-content);
 }
 
 .panel.active {
@@ -87,24 +232,26 @@ html, body {
 }
 
 /* ============================================================
-   Toolbar (shared)
+   Toolbar (shared) — unified translucent toolbar
    ============================================================ */
 .toolbar {
   display: flex;
   align-items: center;
-  height: 26px;
-  background: linear-gradient(to bottom, #f9f9f9, #e3e7e8);
-  border-bottom: 1px solid #d0d0d0;
-  padding: 0 2px;
+  height: 38px;
+  background: var(--bg-toolbar);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid var(--hairline);
+  padding: 0 8px;
   flex-shrink: 0;
-  gap: 1px;
+  gap: 2px;
 }
 
 .toolbar-left {
   display: flex;
   align-items: center;
   flex: 1;
-  gap: 1px;
+  gap: 2px;
 }
 
 .toolbar-right {
@@ -113,38 +260,40 @@ html, body {
 }
 
 .tb-btn {
-  font-family: tahoma, arial, helvetica, sans-serif;
-  font-size: 11px;
-  color: #444;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-primary);
   background: transparent;
-  border: 1px solid transparent;
-  padding: 2px 6px;
+  border: none;
+  padding: 5px 10px;
   cursor: pointer;
-  border-radius: 2px;
+  border-radius: 6px;
   white-space: nowrap;
+  transition: background-color 0.1s ease;
 }
 
 .tb-btn:hover {
-  border-color: #b9d0ef;
-  background: #eff5fb;
+  background: var(--control-fill);
 }
 
 .tb-btn:active {
-  background: #dbeaf8;
-  border-color: #99b8d8;
+  background: var(--control-fill-active);
 }
 
 .tb-sep {
   display: inline-block;
   width: 1px;
-  height: 16px;
-  background: #d0d0d0;
-  margin: 0 2px;
+  height: 18px;
+  background: var(--hairline-strong);
+  margin: 0 6px;
+  flex-shrink: 0;
 }
 
 .tb-label {
-  padding: 0 4px;
-  color: #444;
+  padding: 0 6px 0 2px;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-weight: 500;
 }
 
 /* ============================================================
@@ -159,46 +308,36 @@ html, body {
   flex: 1;
   width: 100%;
   resize: none;
-  font-family: Monaco, Menlo, "Courier New", monospace;
-  font-size: 12px;
-  background: #fff;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  background: var(--bg-content);
   border: none;
-  border-top: none;
   outline: none;
-  padding: 4px;
-  color: #000;
+  padding: 14px 16px;
+  color: var(--text-primary);
 }
 
 #json-input::placeholder {
-  color: #aaa;
+  color: var(--text-tertiary);
 }
 
 #status-bar {
-  height: 20px;
-  background: #ededed;
-  border-top: 1px solid #d0d0d0;
+  height: 24px;
+  background: var(--bg-sidebar);
+  border-top: 1px solid var(--hairline);
   display: flex;
   align-items: center;
-  padding: 0 6px;
+  padding: 0 12px;
   flex-shrink: 0;
-  font-size: 11px;
-  color: #444;
-}
-
-/* Panel border wrapper */
-#panel-text {
-  border: 1px solid #d0d0d0;
-  border-top: none;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
 }
 
 /* ============================================================
    Viewer panel layout
    ============================================================ */
-#panel-viewer {
-  border: 1px solid #d0d0d0;
-  border-top: none;
-}
-
 #viewer-inner {
   display: flex;
   width: 100%;
@@ -206,38 +345,52 @@ html, body {
   overflow: hidden;
 }
 
-/* Tree panel */
+/* Tree panel — source list sidebar */
 #tree-panel {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 150px;
   overflow: hidden;
-  border-right: 1px solid #d0d0d0;
+  border-right: 1px solid var(--hairline);
+  background: var(--bg-sidebar);
 }
 
 #tree-container {
   flex: 1;
   overflow: auto;
-  background: #fff;
-  padding: 4px 0;
+  background: var(--bg-sidebar);
+  padding: 6px 4px;
 }
 
 /* Splitter */
 #splitter {
   width: 5px;
-  background: #ededed;
+  background: var(--bg-window);
   cursor: col-resize;
   flex-shrink: 0;
-  border-left: 1px solid #d0d0d0;
-  border-right: 1px solid #d0d0d0;
+  position: relative;
 }
 
-#splitter:hover, #splitter.dragging {
-  background: #d0d8e8;
+#splitter::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 2px;
+  width: 1px;
+  background: var(--hairline-strong);
 }
 
-/* Grid panel */
+#splitter:hover::after,
+#splitter.dragging::after {
+  left: 0;
+  width: 5px;
+  background: var(--accent);
+  opacity: 0.55;
+  border-radius: 2px;
+}
+
+/* Grid panel — inspector table */
 #grid-panel {
   width: 270px;
   min-width: 120px;
@@ -245,32 +398,39 @@ html, body {
   flex-direction: column;
   overflow: hidden;
   flex-shrink: 0;
+  background: var(--bg-content);
 }
 
 #grid-header {
   display: flex;
-  height: 22px;
-  background: linear-gradient(to bottom, #f9f9f9, #e3e7e8);
-  border-bottom: 1px solid #d0d0d0;
+  height: 26px;
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--hairline);
   flex-shrink: 0;
 }
 
 .grid-header-cell {
   display: flex;
   align-items: center;
-  padding: 0 6px;
-  font-size: 11px;
-  color: #333;
+  padding: 0 10px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
   cursor: pointer;
   user-select: none;
-  border-right: 1px solid #d0d0d0;
   overflow: hidden;
   white-space: nowrap;
+  transition: color 0.1s ease;
 }
 
-.grid-header-cell:last-child {
-  border-right: none;
-  flex: 1;
+.grid-header-cell:hover {
+  color: var(--text-primary);
+}
+
+.grid-header-cell:first-child {
+  border-right: 1px solid var(--hairline);
 }
 
 #grid-col-name {
@@ -283,7 +443,8 @@ html, body {
 
 .sort-arrow {
   margin-left: 4px;
-  font-size: 9px;
+  font-size: 8px;
+  color: var(--accent);
 }
 
 .sort-arrow.hidden {
@@ -293,14 +454,18 @@ html, body {
 #grid-body {
   flex: 1;
   overflow-y: auto;
-  background: #fff;
+  background: var(--bg-content);
 }
 
 .grid-row {
   display: flex;
-  height: 19px;
-  border-bottom: 1px solid #ededed;
-  font-size: 11px;
+  height: 24px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 12px;
+}
+
+.grid-row:nth-child(even) {
+  background: var(--row-alt);
 }
 
 .grid-row:last-child {
@@ -310,71 +475,84 @@ html, body {
 .grid-cell {
   display: flex;
   align-items: center;
-  padding: 0 6px;
+  padding: 0 10px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
 }
 
 .grid-cell-name {
   width: 55%;
-  border-right: 1px solid #ededed;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 12px;
 }
 
 .grid-cell-value {
   flex: 1;
+  color: var(--text-secondary);
 }
 
 /* ============================================================
    Search toolbar
    ============================================================ */
 #search-toolbar {
-  border-top: 1px solid #d0d0d0;
+  border-top: 1px solid var(--hairline);
   border-bottom: none;
+  height: 36px;
 }
 
 .search-input {
-  width: 150px;
-  height: 18px;
-  font-family: tahoma, arial, helvetica, sans-serif;
-  font-size: 11px;
-  border: 1px solid #a0a0a0;
-  padding: 1px 3px;
-  background: #fff;
+  width: 170px;
+  height: 23px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 999px;
+  padding: 1px 10px;
+  background: var(--control-fill);
+  color: var(--text-primary);
   outline: none;
+  transition: border-color 0.1s ease, box-shadow 0.1s ease, background-color 0.1s ease;
+}
+
+.search-input::placeholder {
+  color: var(--text-tertiary);
 }
 
 .search-input:focus {
-  border-color: #6090c8;
+  background: var(--bg-content);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 /* Arrow icons in search buttons */
-.arrow-down {
-  display: inline-block;
-  width: 0;
-  height: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-top: 5px solid #2a8a2a;
-  vertical-align: middle;
-  margin-left: 2px;
-}
-
+.arrow-down,
 .arrow-up {
   display: inline-block;
   width: 0;
   height: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-bottom: 5px solid #2a8a2a;
+  border-left: 3.5px solid transparent;
+  border-right: 3.5px solid transparent;
   vertical-align: middle;
-  margin-left: 2px;
+  margin-left: 4px;
+}
+
+.arrow-down {
+  border-top: 5px solid var(--text-secondary);
+}
+
+.arrow-up {
+  border-bottom: 5px solid var(--text-secondary);
 }
 
 /* ============================================================
-   Tree nodes — elbow connector lines
-   Column width: 18px, center at x=9. Row height: 18px, center at y=9.
-   Lines use repeating-linear-gradient for 1px-on/1px-off dotted pattern.
+   Tree nodes — source-list rows with disclosure triangles.
+   Connector lines are reduced to faint indent guides; the .tc /
+   .tc-pass / .tc-tee / .tc-corner boxes stay in layout (same
+   18px column grid) but no longer draw a Windows-explorer tree.
    ============================================================ */
 .tree-node {
   position: relative;
@@ -383,94 +561,123 @@ html, body {
 .tree-row {
   display: flex;
   align-items: center;
-  height: 18px;
+  height: 24px;
   cursor: pointer;
-  padding-right: 4px;
+  padding-right: 8px;
+  margin: 1px 5px;
   white-space: nowrap;
   position: relative;
+  border-radius: 6px;
+  overflow: hidden;
 }
 
 .tree-row:hover {
-  background: #eef3fc;
+  background: var(--control-fill);
 }
 
 .tree-row.selected {
-  background: #dfe8f6;
+  background: var(--accent);
+}
+
+.tree-row.selected .tree-label {
+  color: var(--text-on-accent);
+}
+
+.tree-row.selected .icon-object::before,
+.tree-row.selected .icon-array::before {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.tree-row.selected .icon-string::before,
+.tree-row.selected .icon-number::before,
+.tree-row.selected .icon-boolean::before,
+.tree-row.selected .icon-null::before {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.tree-row.selected .expander-box::before {
+  border-left-color: rgba(255, 255, 255, 0.92);
+}
+
+.tree-row.selected .tc-pass.has-line,
+.tree-row.selected .tc-tee,
+.tree-row.selected .tc-corner {
+  background-image: linear-gradient(rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.35));
 }
 
 /* Base column — every indent/elbow cell in a tree row */
 .tc {
   display: inline-flex;
   width: 18px;
-  height: 18px;
+  height: 24px;
   flex-shrink: 0;
-  position: relative; /* needed for absolutely-positioned expander-box */
+  position: relative;
 }
 
-/* Pass-through column: full-height vertical line when ancestor has a following sibling */
+/* Pass-through column: faint full-height indent guide.
+   Must be an image layer (linear-gradient), not a flat
+   background-color — a solid color ignores background-position/
+   size and fills the whole box instead of a 1px line. */
 .tc-pass.has-line {
-  background:
-    repeating-linear-gradient(to bottom, #c0c0c0 0, #c0c0c0 1px, transparent 1px, transparent 2px)
-    9px 0 / 1px 100% no-repeat;
+  background-image: linear-gradient(var(--connector), var(--connector));
+  background-position: 9px 0;
+  background-size: 1px 100%;
+  background-repeat: no-repeat;
 }
 
-/* Tee — node has a following sibling:
-   full-height vertical at x=9 + horizontal stub from x=9 to right edge at y=8 */
+/* Tee / corner: same faint vertical guide, no horizontal stub —
+   the disclosure triangle communicates hierarchy instead */
 .tc-tee {
-  background:
-    repeating-linear-gradient(to bottom, #c0c0c0 0, #c0c0c0 1px, transparent 1px, transparent 2px)
-      9px 0 / 1px 100% no-repeat,
-    repeating-linear-gradient(to right,  #c0c0c0 0, #c0c0c0 1px, transparent 1px, transparent 2px)
-      9px 8px / 9px 1px no-repeat;
+  background-image: linear-gradient(var(--connector), var(--connector));
+  background-position: 9px 0;
+  background-size: 1px 100%;
+  background-repeat: no-repeat;
 }
 
-/* Corner — last child:
-   vertical from top down to row centre (9px) + same horizontal stub */
 .tc-corner {
-  background:
-    repeating-linear-gradient(to bottom, #c0c0c0 0, #c0c0c0 1px, transparent 1px, transparent 2px)
-      9px 0 / 1px 9px no-repeat,
-    repeating-linear-gradient(to right,  #c0c0c0 0, #c0c0c0 1px, transparent 1px, transparent 2px)
-      9px 8px / 9px 1px no-repeat;
+  background-image: linear-gradient(var(--connector), var(--connector));
+  background-position: 9px 0;
+  background-size: 1px 50%;
+  background-repeat: no-repeat;
 }
 
 /* Root column: no lines — tc-root carries no background */
 
-/* Expander box — absolutely centred in its column, layered above the gradient lines */
+/* Expander — disclosure triangle, rotates open/closed */
 .expander-box {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 1;
-  width: 9px;
-  height: 9px;
-  border: 1px solid #999;
-  background: #fff;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
   cursor: pointer;
   user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* +/− drawn as 1px bars, pixel-centred in the 7px inner box
-   (text glyphs sit visually low because of baseline metrics) */
+.tree-row:not(.selected) .expander-box:hover {
+  background: var(--control-fill-hover);
+}
+
 .expander-box::before {
   content: '';
-  position: absolute;
-  left: 1px;
-  right: 1px;
-  top: 3px;
-  height: 1px;
-  background: #333;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 4px 0 4px 5px;
+  border-color: transparent transparent transparent var(--text-tertiary);
+  transition: transform 0.15s ease;
 }
 
-.expander-box.plus::after {
-  content: '';
-  position: absolute;
-  top: 1px;
-  bottom: 1px;
-  left: 3px;
-  width: 1px;
-  background: #333;
+.expander-box.minus::before {
+  transform: rotate(90deg);
 }
 
 /* Type icons */
@@ -481,49 +688,46 @@ html, body {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  margin-right: 3px;
+  margin-right: 5px;
 }
 
-/* Object icon: {} curly braces SVG */
 .icon-object::before {
   content: '{}';
-  font-family: tahoma, arial, sans-serif;
-  font-weight: bold;
+  font-family: var(--font-mono);
+  font-weight: 600;
   font-size: 11px;
-  color: #000080;
+  color: var(--ok-object);
 }
 
-/* Array icon: [] brackets */
 .icon-array::before {
   content: '[]';
-  font-family: tahoma, arial, sans-serif;
-  font-weight: bold;
+  font-family: var(--font-mono);
+  font-weight: 600;
   font-size: 11px;
-  color: #000080;
+  color: var(--ok-array);
 }
 
-/* Leaf icons: colored squares */
 .icon-string::before,
 .icon-number::before,
 .icon-boolean::before,
 .icon-null::before {
   content: '';
   display: block;
-  width: 9px;
-  height: 9px;
-  border-radius: 1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
 }
 
-.icon-string::before  { background: #000080; }
-.icon-number::before  { background: #008000; }
-.icon-boolean::before { background: #c8a000; }
-.icon-null::before    { background: #c00000; }
+.icon-string::before  { background: var(--ok-string); }
+.icon-number::before  { background: var(--ok-number); }
+.icon-boolean::before { background: var(--ok-boolean); }
+.icon-null::before    { background: var(--ok-null); }
 
 /* Label */
 .tree-label {
-  font-size: 11px;
-  color: #000;
-  font-family: tahoma, arial, helvetica, sans-serif;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
 }
 
 /* Children container */
@@ -536,12 +740,14 @@ html, body {
 }
 
 /* ============================================================
-   Modal dialogs
+   Modal dialogs — macOS alert sheet
    ============================================================ */
 #modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(200, 200, 200, 0.5);
+  background: rgba(0, 0, 0, 0.22);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -554,95 +760,112 @@ html, body {
 
 #modal-window {
   width: 300px;
-  background: #f0f0f0;
-  border: 1px solid #a0a0a0;
-  border-radius: 4px;
-  box-shadow: 2px 2px 8px rgba(0,0,0,0.3);
+  background: var(--bg-elevated);
+  border: 0.5px solid var(--hairline-strong);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sheet);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  align-items: center;
+  position: relative;
+  padding: 26px 22px 18px;
+  gap: 6px;
 }
 
-#modal-titlebar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 22px;
-  background: linear-gradient(to bottom, #f9f9f9, #dde3e8);
-  border-bottom: 1px solid #c0c0c0;
-  padding: 0 6px;
+#modal-titlebar,
+#modal-body {
+  display: contents;
 }
 
 #modal-title {
-  font-weight: bold;
-  font-size: 11px;
-  color: #333;
+  order: 2;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+  text-align: center;
+  margin-top: 2px;
 }
 
 #modal-close-btn {
-  background: none;
-  border: 1px solid transparent;
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--control-fill);
+  border: none;
   cursor: pointer;
-  font-size: 11px;
-  color: #555;
-  padding: 1px 4px;
-  border-radius: 2px;
+  font-size: 10px;
   line-height: 1;
+  color: var(--text-secondary);
+  border-radius: 50%;
+  z-index: 1;
 }
 
 #modal-close-btn:hover {
-  border-color: #b9d0ef;
-  background: #eff5fb;
-}
-
-#modal-body {
-  display: flex;
-  align-items: flex-start;
-  padding: 16px;
-  gap: 12px;
-  font-size: 11px;
-  color: #333;
-  line-height: 1.5;
+  background: var(--control-fill-hover);
+  color: var(--text-primary);
 }
 
 #modal-error-icon {
-  flex-shrink: 0;
+  order: 1;
+  margin: 2px auto 4px;
 }
 
 #modal-error-icon.hidden {
   display: none;
 }
 
+#modal-error-icon svg circle {
+  fill: var(--danger) !important;
+  stroke: none !important;
+}
+
+#modal-error-icon svg line {
+  stroke: #ffffff !important;
+}
+
 #modal-message {
-  flex: 1;
+  order: 3;
   margin: 0;
+  margin-top: 2px;
+  max-width: 250px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  text-align: center;
   white-space: pre-line;
 }
 
 #modal-footer {
+  order: 4;
   display: flex;
   justify-content: center;
-  padding: 8px 16px 12px;
-  border-top: 1px solid #d0d0d0;
+  width: 100%;
+  padding-top: 18px;
 }
 
 #modal-ok-btn {
-  font-family: tahoma, arial, helvetica, sans-serif;
-  font-size: 11px;
-  width: 75px;
-  padding: 3px 8px;
-  background: linear-gradient(to bottom, #f5f5f5, #ddd);
-  border: 1px solid #aaa;
-  border-radius: 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  min-width: 84px;
+  padding: 6px 16px;
+  background: var(--accent);
+  border: none;
+  border-radius: 7px;
   cursor: pointer;
-  color: #333;
+  color: var(--text-on-accent);
+  transition: background-color 0.1s ease;
 }
 
 #modal-ok-btn:hover {
-  background: linear-gradient(to bottom, #fff, #e5e5e5);
-  border-color: #888;
+  background: var(--accent-pressed);
 }
 
 #modal-ok-btn:active {
-  background: linear-gradient(to bottom, #ddd, #ccc);
+  background: var(--accent-pressed);
+  opacity: 0.85;
 }
