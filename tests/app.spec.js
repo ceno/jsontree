@@ -56,7 +56,7 @@ test('1. opens empty in the source editor, ready for a paste', async ({ page }) 
   await expect(page.locator('#tree-container .tree-row')).toHaveCount(0);
   await expect(page.locator('#status-left')).toHaveText('Empty · 0 B · 0 lines');
   await expect(page.locator('#status-left')).not.toHaveClass(/error/);
-  await expect(page.locator('#status-path')).toHaveText('⌘F Find');
+  await expect(page.locator('#status-path')).toHaveText('⌘F Search');
 });
 
 // What the extension does: the app boots empty, in the editor, and is then
@@ -93,10 +93,14 @@ test('2. the status bar is the same height in every state', async ({ page }) => 
   await load(page);
   const bar = page.locator('#statusbar');
   const resting = (await bar.boundingBox()).height;
+  const content = (await page.locator('#content-wrap').boundingBox()).y;
 
+  // Searching happens in the toolbar: it opens nothing, so nothing moves.
   await page.keyboard.press('Meta+f');
-  await expect(page.locator('#findbar')).toHaveClass(/open/);
+  await page.keyboard.type('name');
+  await expect(page.locator('#search-count')).toHaveText('1/1');
   expect((await bar.boundingBox()).height).toBe(resting);
+  expect((await page.locator('#content-wrap').boundingBox()).y).toBe(content);
 
   await page.keyboard.press('Escape');
   await page.locator('#btn-edit').click();
@@ -179,50 +183,126 @@ test('8. arrow keys walk the tree and expand containers', async ({ page }) => {
 });
 
 // ----------------------------------------------------------------
-// Find
+// Search, over the tree
 // ----------------------------------------------------------------
-test('9. find highlights matches, counts them, and reveals buried nodes', async ({ page }) => {
+const tinted = (page) => page.locator('.tree-row.search-match').evaluateAll(
+  els => els.map(el => el.dataset.path));
+
+test('9. search tints the rows that match, counts them, and reveals buried nodes', async ({ page }) => {
   await load(page);
   await page.keyboard.press('Meta+f');
-  await expect(page.locator('#findbar')).toHaveClass(/open/);
+  await expect(page.locator('#search-input')).toBeFocused();
 
-  await page.locator('#find-input').fill('lat');
+  await page.keyboard.type('lat');
   // `lat` is three levels down, inside a collapsed subtree.
-  await expect(page.locator('#find-count')).toHaveText('1 of 1');
-  await expect(page.locator('.tree-row.selected .tree-label')).toContainText('lat : 37.3861');
-  await expect(page.locator('mark.find-match.current')).toHaveText('lat');
+  await expect(page.locator('#search-count')).toHaveText('1/1');
+  expect(await tinted(page)).toEqual(['address.geo.lat']);
+  await expect(page.locator('.tree-row.selected .tree-label')).toHaveText('lat : 37.3861');
+  await expect(page.locator('.tree-row.selected')).toBeVisible();
   await expect(page.locator('#status-path')).toHaveText('address.geo.lat');
+  await expect(page.locator('#status-left')).toHaveText('Valid JSON · 1 of 1 match for “lat” · 249 B');
 });
 
-test('10. find cycles through matches and wraps around', async ({ page }) => {
+// A row matches on its key or its value, whatever the case, and every match
+// is tinted at once — only the current one is selected.
+test('9b. search looks through keys and values alike, ignoring case', async ({ page }) => {
+  await load(page);
+  await page.keyboard.press('Meta+Alt+ArrowRight');
+  await page.locator('#search-input').fill('SPRING');
+  expect(await tinted(page)).toEqual(['address.city']);
+
+  await page.locator('#search-input').fill('a');
+  const paths = await tinted(page);
+  expect(paths).toContain('name');            // the key
+  expect(paths).toContain('tags[0]');         // the value, "admin"
+  expect(paths).not.toContain('score');
+  await expect(page.locator('.tree-row.selected')).toHaveCount(1);
+  // The selection outranks the tint on the current match.
+  const grounds = await page.evaluate(() => ({
+    current: getComputedStyle(document.querySelector('.tree-row.selected')).backgroundColor,
+    other: getComputedStyle(document.querySelector('.tree-row.search-match:not(.selected)')).backgroundColor,
+    plain: getComputedStyle(document.querySelector('.tree-row[data-path="score"]')).backgroundColor,
+  }));
+  expect(grounds.other).not.toBe(grounds.plain);
+  expect(grounds.other).not.toBe(grounds.current);
+
+  await page.locator('#search-input').fill('no such thing');
+  await expect(page.locator('#search-count')).toHaveText('0/0');
+  expect(await tinted(page)).toEqual([]);
+  await expect(page.locator('#search-next')).toBeDisabled();
+  await expect(page.locator('#status-left')).toContainText('No matches for “no such thing”');
+});
+
+test('10. search steps through its matches and wraps around', async ({ page }) => {
   await load(page);
   await page.keyboard.press('Meta+f');
-  await page.locator('#find-input').fill('a');
+  await page.keyboard.type('a');
 
-  const total = parseInt((await page.locator('#find-count').textContent()).split(' of ')[1], 10);
+  const total = parseInt((await page.locator('#search-count').textContent()).split('/')[1], 10);
   expect(total).toBeGreaterThan(2);
-  await expect(page.locator('#find-count')).toHaveText('1 of ' + total);
+  await expect(page.locator('#search-count')).toHaveText('1/' + total);
 
-  await page.locator('#find-next').click();
-  await expect(page.locator('#find-count')).toHaveText('2 of ' + total);
-  await page.locator('#find-prev').click();
-  await expect(page.locator('#find-count')).toHaveText('1 of ' + total);
+  await page.locator('#search-next').click();
+  await expect(page.locator('#search-count')).toHaveText('2/' + total);
+  // The chevrons leave the caret in the field.
+  await expect(page.locator('#search-input')).toBeFocused();
+  await page.locator('#search-prev').click();
+  await expect(page.locator('#search-count')).toHaveText('1/' + total);
   // Wrap backwards off the first match.
-  await page.locator('#find-prev').click();
-  await expect(page.locator('#find-count')).toHaveText(total + ' of ' + total);
+  await page.locator('#search-prev').click();
+  await expect(page.locator('#search-count')).toHaveText(total + '/' + total);
+  await expect(page.locator('#status-left')).toContainText(total + ' of ' + total + ' matches for “a”');
+
+  // Return and ⌘G go forwards, with Shift backwards.
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#search-count')).toHaveText('1/' + total);
+  await page.keyboard.press('Meta+g');
+  await expect(page.locator('#search-count')).toHaveText('2/' + total);
+  await page.keyboard.press('Shift+Enter');
+  await page.keyboard.press('Shift+Meta+g');
+  await expect(page.locator('#search-count')).toHaveText(total + '/' + total);
+  // Each step selects the row it lands on.
+  const last = (await tinted(page)).pop();
+  await expect(page.locator('.tree-row.selected')).toHaveAttribute('data-path', last);
 });
 
-test('11. Escape closes find and removes every highlight', async ({ page }) => {
+test('11. Escape calls the search off and hands the keyboard back to the tree', async ({ page }) => {
   await load(page);
   await page.keyboard.press('Meta+f');
-  await page.locator('#find-input').fill('name');
-  await expect(page.locator('mark.find-match').first()).toBeVisible();
+  await page.keyboard.type('age');
+  expect(await tinted(page)).toEqual(['age']);
 
   await page.keyboard.press('Escape');
-  await expect(page.locator('#findbar')).not.toHaveClass(/open/);
-  await expect(page.locator('mark.find-match')).toHaveCount(0);
-  // The label text survives the highlight round-trip intact.
-  await expect(page.locator('#tree-container .tree-label').nth(1)).toHaveText('name : "John"');
+  expect(await tinted(page)).toEqual([]);
+  await expect(page.locator('#search-input')).toHaveValue('');
+  await expect(page.locator('#search-input')).not.toBeFocused();
+  await expect(page.locator('#search-count')).toHaveText('');
+  await expect(page.locator('#status-left')).toHaveText('Valid JSON · 249 B · 14 nodes');
+
+  // The match it stopped on stays selected, and the arrows move on from it.
+  await expect(page.locator('.tree-row.selected')).toHaveAttribute('data-path', 'age');
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('.tree-row.selected')).toHaveAttribute('data-path', 'active');
+});
+
+// The cross clears the field but keeps the caret in it, for the next query;
+// Escape from outside the field clears a search left standing.
+test('11b. the clear button empties the field and keeps the caret in it', async ({ page }) => {
+  await load(page);
+  await expect(page.locator('#search-clear')).toBeHidden();      // nothing to clear yet
+  await page.locator('#search-input').fill('name');
+  await page.locator('#search-clear').click();
+  await expect(page.locator('#search-input')).toHaveValue('');
+  await expect(page.locator('#search-input')).toBeFocused();
+  expect(await tinted(page)).toEqual([]);
+
+  await page.locator('#search-input').fill('name');
+  await page.locator('.tree-row[data-path="age"]').click();      // the query stands
+  expect(await tinted(page)).toEqual(['name']);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#search-input')).toHaveValue('');
+  expect(await tinted(page)).toEqual([]);
+  await expect(page.locator('.tree-row.selected')).toHaveAttribute('data-path', 'age');
 });
 
 // ----------------------------------------------------------------
@@ -392,18 +472,6 @@ test('27. a transient message does not downgrade a standing error', async ({ pag
   await expect(page.locator('#status-left')).toHaveClass(/error/);
 });
 
-// D5: find searched the hidden tree while the editor was open, reporting a
-// match count and a path for rows nobody could see.
-test('28. find refuses to open over the source editor', async ({ page }) => {
-  await load(page);
-  await page.locator('#btn-edit').click();
-  await page.keyboard.press('Meta+f');
-
-  await expect(page.locator('#findbar')).not.toHaveClass(/open/);
-  await expect(page.locator('#edit-area')).toBeFocused();
-  await expect(page.locator('#status-left')).toContainText('leave the editor first');
-});
-
 // D4: enterEdit() set the caret before the value was assigned, and assigning
 // .value resets it to the end.
 test('29. loading unparseable text opens the editor at the top', async ({ page }) => {
@@ -487,18 +555,8 @@ test('34. expand and collapse report honestly on an empty document', async ({ pa
   await expect(page.locator('#status-left')).toHaveText('Nothing to collapse');
 });
 
-// D12: a 0-height box still paints its border under box-sizing: border-box.
-test('35. the closed find bar takes no vertical space', async ({ page }) => {
-  await load(page);
-  expect(await page.locator('#findbar').evaluate(el => el.getBoundingClientRect().height)).toBe(0);
-  await page.keyboard.press('Meta+f');
-  await expect(page.locator('#findbar')).toHaveClass(/open/);
-  await page.waitForTimeout(250);
-  expect(await page.locator('#findbar').evaluate(el => el.getBoundingClientRect().height)).toBe(34);
-});
-
-// D9: the toolbar had no give, so the find button was pushed off the
-// right-hand edge on a narrow window.
+// D9: the toolbar had no give, so whatever was on the right was pushed off the
+// edge of a narrow window.
 test('36. the toolbar keeps every control reachable when narrow', async ({ page }) => {
   await load(page);
   // Once over the tree and once in the editor: each brings its own buttons.
@@ -509,7 +567,7 @@ test('36. the toolbar keeps every control reachable when narrow', async ({ page 
       const overflow = await page.locator('#toolbar').evaluate(
         el => el.scrollWidth - el.clientWidth);
       expect(overflow, `toolbar overflows at ${width}px (${mode})`).toBeLessThanOrEqual(0);
-      for (const id of ['btn-find-open', 'btn-edit']) {
+      for (const id of ['search-field', 'btn-edit']) {
         const box = await page.locator('#' + id).boundingBox();
         expect(box.x + box.width, `${id} off-screen at ${width}px (${mode})`).toBeLessThanOrEqual(width);
       }
@@ -620,8 +678,8 @@ const EDITOR_ACTIONS = ['View', 'Copy', 'Paste', 'Format', 'Minify'];
 test('44. the toolbar shows the tree\'s actions over the tree and the editor\'s while editing', async ({ page }) => {
   await page.goto('/');
   expect(await toolbarLabels(page)).toEqual(EDITOR_ACTIONS);    // opens in the editor
-  // Find is the only icon on the right, in either view.
-  await expect(page.locator('#toolbar .tb-icon-btn')).toHaveCount(1);
+  // The search field belongs to neither set: it is there in both views.
+  await expect(page.locator('#search-field')).toBeVisible();
 
   await page.evaluate((t) => window.jsontree.load(t), SAMPLE);
   expect(await toolbarLabels(page)).toEqual(TREE_ACTIONS);
@@ -734,16 +792,16 @@ test('51. container rows say how much they hold', async ({ page }) => {
 
 // The count describes the document, it is not in it: searching for "key" must
 // not light up every object, and clearing a search must not take it away.
-test('52. find neither matches the counts nor disturbs them', async ({ page }) => {
+test('52. search neither matches the counts nor disturbs them', async ({ page }) => {
   await load(page, '{"first":{"a":1},"second":[1,2]}');
   await page.keyboard.press('Meta+f');
-  await page.locator('#find-input').fill('key');
-  await expect(page.locator('#find-count')).toHaveText('0 of 0');
-  await page.locator('#find-input').fill('item');
-  await expect(page.locator('#find-count')).toHaveText('0 of 0');
+  await page.locator('#search-input').fill('key');
+  await expect(page.locator('#search-count')).toHaveText('0/0');
+  await page.locator('#search-input').fill('item');
+  await expect(page.locator('#search-count')).toHaveText('0/0');
 
-  await page.locator('#find-input').fill('first');
-  await expect(page.locator('#find-count')).toHaveText('1 of 1');
+  await page.locator('#search-input').fill('first');
+  await expect(page.locator('#search-count')).toHaveText('1/1');
   await page.keyboard.press('Escape');
   await expect(page.locator('.tree-row[data-path="first"] .tree-label')).toHaveText('first');
   await expect(page.locator('.tree-row[data-path="first"] .tree-count')).toHaveText('1 key');
@@ -907,4 +965,288 @@ test('59. a line too long to colour is shown plain, and still numbered', async (
   await page.locator('#edit-area').fill('{"n": 1}');
   await expect(page.locator('#edit-wrap')).not.toHaveClass(/plain/);
   await expect(page.locator('#edit-highlight .tok-num')).toHaveText('1');
+});
+
+// ----------------------------------------------------------------
+// Search, in the source editor
+// ----------------------------------------------------------------
+const marked = (page) => page.locator('#edit-marks mark').allTextContents();
+const PRETTY = JSON.stringify(JSON.parse(SAMPLE), null, 2);
+
+// D5 was find searching a hidden tree from the editor, so it was made to
+// refuse. Now the editor is searched for what it shows: its text.
+test('60. search in the editor marks every occurrence in the text', async ({ page }) => {
+  await load(page);
+  await page.locator('#btn-edit').click();
+  await page.keyboard.press('Meta+f');
+  await expect(page.locator('#search-input')).toBeFocused();
+
+  // Occurrences in the text, whatever the case: the key "street" and the
+  // value "123 Main St" each hold one.
+  await page.keyboard.type('ST');
+  expect(await marked(page)).toEqual(['st', 'St']);
+  await expect(page.locator('#search-count')).toHaveText('1/2');
+  await expect(page.locator('#edit-marks mark.current')).toHaveCount(1);
+  await expect(page.locator('#status-left')).toHaveText('Valid JSON · 1 of 2 matches for “ST” · 249 B');
+  // The text itself is untouched, and so is the coloured copy of it.
+  await expect(page.locator('#edit-area')).toHaveValue(PRETTY);
+  expect(await drawnText(page)).toBe(PRETTY);
+
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#search-count')).toHaveText('2/2');
+  expect(await page.locator('#edit-marks mark').evaluateAll(
+    els => els.map(el => el.classList.contains('current')))).toEqual([false, true]);
+  await page.keyboard.press('Meta+g');                    // wraps
+  await expect(page.locator('#search-count')).toHaveText('1/2');
+});
+
+// The marks are a third copy of the text with only their ground showing. If
+// that copy disagrees with the others about where a glyph goes, the mark
+// lands beside the text instead of under it.
+test('61. a mark lies exactly under the text it marks', async ({ page }) => {
+  await load(page);
+  await page.locator('#btn-edit').click();
+  // A whole string token, quotes and all, so the coloured copy has an element
+  // of exactly the same extent to compare with.
+  await page.locator('#search-input').fill('"Springfield"');
+  await expect(page.locator('#search-count')).toHaveText('1/1');
+
+  const boxes = await page.evaluate(() => {
+    const rect = (el) => { const r = el.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; };
+    const token = [...document.querySelectorAll('#edit-highlight .tok-str')]
+      .find(el => el.textContent === '"Springfield"');
+    return { mark: rect(document.querySelector('#edit-marks mark.current')), token: rect(token) };
+  });
+  for (let i = 0; i < 4; i++) expect(Math.abs(boxes.mark[i] - boxes.token[i])).toBeLessThan(0.5);
+
+  // And it is paint only: the marks never take the pointer from the textarea.
+  await expect(page.locator('#edit-marks')).toHaveCSS('pointer-events', 'none');
+});
+
+test('62. stepping to a match scrolls the editor to it, down and across', async ({ page }) => {
+  await page.goto('/');
+  const rows = Array.from({ length: 3000 }, (_, i) => ({ id: i, name: 'row ' + i }));
+  rows[2500].note = 'x'.repeat(4000) + ' needle';          // far down, and far along its line
+  await page.evaluate((t) => window.jsontree.load(t), JSON.stringify(rows));
+  await page.locator('#btn-edit').click();
+  await page.locator('#search-input').fill('needle');
+  await expect(page.locator('#search-count')).toHaveText('1/1');
+
+  const seen = await page.evaluate(() => {
+    const area = document.getElementById('edit-area');
+    const a = area.getBoundingClientRect();
+    const m = document.querySelector('#edit-marks mark.current').getBoundingClientRect();
+    return {
+      scrollTop: area.scrollTop,
+      scrollLeft: area.scrollLeft,
+      inside: m.top >= a.top && m.bottom <= a.bottom && m.left >= a.left && m.right <= a.left + area.clientWidth,
+    };
+  });
+  expect(seen.scrollTop).toBeGreaterThan(100000);
+  expect(seen.scrollLeft).toBeGreaterThan(10000);
+  expect(seen.inside).toBe(true);
+  // Only a window of the text is marked, as only a window of it is drawn.
+  expect((await lineNumbers(page)).length).toBeLessThan(200);
+});
+
+// Typing in the editor moves every match after the caret. The marks and the
+// tally follow, and the search keeps its place rather than starting again.
+test('63. a standing search follows edits to the text and keeps its place', async ({ page }) => {
+  await page.goto('/');
+  await type(page, '["cat", "dog", "cat"]');
+  await page.locator('#search-input').fill('cat');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#search-count')).toHaveText('2/2');
+
+  await page.locator('#edit-area').fill('["cat", "dog", "cat", "cat"]');
+  await expect(page.locator('#search-count')).toHaveText('2/3');
+  expect(await marked(page)).toEqual(['cat', 'cat', 'cat']);
+  await expect(page.locator('#status-left')).toContainText('2 of 3 matches for “cat”');
+
+  // Format rewrites the text without the reader typing; the marks follow that too.
+  await page.locator('#btn-format').click();
+  expect(await marked(page)).toEqual(['cat', 'cat', 'cat']);
+  expect(await page.locator('#edit-marks').evaluate(el => el.textContent))
+    .toBe(await page.locator('#edit-area').inputValue());
+
+  await page.locator('#edit-area').fill('["dog"]');
+  await expect(page.locator('#search-count')).toHaveText('0/0');
+  expect(await marked(page)).toEqual([]);
+});
+
+test('64. Escape hands the caret back to the editor, on the match it stopped at', async ({ page }) => {
+  await load(page);
+  await page.setViewportSize({ width: 900, height: 240 });      // too short to show all 18 lines
+  await page.locator('#btn-edit').click();
+  await page.keyboard.press('Meta+f');
+  await page.keyboard.type('admin');                            // on line 15, out of sight
+  const scrolled = await page.locator('#edit-area').evaluate(el => el.scrollTop);
+  expect(scrolled).toBeGreaterThan(0);
+  await page.keyboard.press('Escape');
+  // Taking the focus must not throw the view back to where the caret was.
+  expect(await page.locator('#edit-area').evaluate(
+    el => [el.scrollTop, el.value.slice(el.selectionStart, el.selectionEnd)])).toEqual([scrolled, 'admin']);
+
+  await page.keyboard.press('Meta+f');
+  await page.keyboard.type('springfield');
+  await page.keyboard.press('Escape');
+
+  await expect(page.locator('#edit-area')).toBeFocused();
+  expect(await page.locator('#edit-area').evaluate(
+    el => el.value.slice(el.selectionStart, el.selectionEnd))).toBe('Springfield');
+  await expect(page.locator('#search-input')).toHaveValue('');
+  expect(await marked(page)).toEqual([]);
+  await expect(page.locator('#status-left')).toHaveText('Valid JSON · 249 B · 18 lines');
+
+  // From the textarea, Escape clears a standing search and leaves the caret be.
+  await page.locator('#search-input').fill('john');
+  await page.locator('#edit-area').click();
+  const caret = await page.locator('#edit-area').evaluate(el => el.selectionStart);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#search-input')).toHaveValue('');
+  await expect(page.locator('#edit-area')).toBeFocused();
+  expect(await page.locator('#edit-area').evaluate(el => el.selectionStart)).toBe(caret);
+});
+
+// The field is one control for two views, so what is in it stays when the
+// view changes, and is looked for again in the new one.
+test('65. a search stands when the view changes, and is run in the new one', async ({ page }) => {
+  await load(page, '{"aa":"a","b":1}');
+  await page.locator('#search-input').fill('a');
+  // Rows over the tree: `aa : "a"` is one of them.
+  expect(await tinted(page)).toEqual(['aa']);
+  await expect(page.locator('#search-count')).toHaveText('1/1');
+
+  // Occurrences in the text: the same row is three of those.
+  await page.locator('#btn-edit').click();
+  await expect(page.locator('#search-input')).toHaveValue('a');
+  await expect(page.locator('#search-count')).toHaveText('1/3');
+  expect(await marked(page)).toEqual(['a', 'a', 'a']);
+  await expect(page.locator('#edit-marks mark.current')).toHaveCount(1);
+
+  await page.locator('#edit-area').fill('{"aa":"a","b":1,"c":"a"}');
+  await page.locator('#btn-edit').click();
+  expect(await tinted(page)).toEqual(['aa', 'c']);
+  await expect(page.locator('#search-count')).toHaveText('1/2');
+  await expect(page.locator('.tree-row.selected')).toHaveAttribute('data-path', 'aa');
+});
+
+test('66. invalid JSON can still be searched, and its error stands', async ({ page }) => {
+  await page.goto('/');
+  await type(page, '{\n  "a": tru,\n  "b": "<true>"\n}');
+  await expect(page.locator('#status-left')).toHaveClass(/error/);
+
+  await page.locator('#search-input').fill('tru');
+  expect(await marked(page)).toEqual(['tru', 'tru']);
+  await expect(page.locator('#search-count')).toHaveText('1/2');
+  await expect(page.locator('#status-left')).toHaveClass(/error/);
+  await expect(page.locator('#status-left')).toContainText('Invalid JSON — line 2');
+
+  // The marked copy is built as markup too, and has to escape what it copies.
+  await page.locator('#search-input').fill('<true>');
+  expect(await marked(page)).toEqual(['<true>']);
+  expect(await page.locator('#edit-marks').evaluate(el => el.textContent))
+    .toBe(await page.locator('#edit-area').inputValue());
+});
+
+// A line too long to colour is too long to draw a marked copy of. The matches
+// are still counted and stepped through; the current one is boxed, and the
+// editor is scrolled along the line to it. The box is placed by asking the
+// textarea where the text is — measuring a copy lands tens of pixels out on a
+// line like this one, which changes font thousands of times.
+test('67. on a line too long to colour, the current match is boxed where the text is', async ({ page }) => {
+  await page.goto('/');
+  const blob = 'x'.repeat(60000) + 'ab 東京 cd 😀 ef'.repeat(2000) + ' needle ' + 'y'.repeat(30000) + ' needle';
+  await page.evaluate((t) => window.jsontree.load(t), JSON.stringify({ blob, n: 1 }));
+  await page.locator('#btn-edit').click();
+  await expect(page.locator('#edit-wrap')).toHaveClass(/plain/);
+
+  await page.locator('#search-input').fill('needle');
+  await expect(page.locator('#search-count')).toHaveText('1/2');
+  await expect(page.locator('#edit-marks mark')).toHaveCount(1);        // the current one only
+
+  // Hit-test the textarea just inside each end of the box: the caret has to
+  // land on the match's own first and last boundaries.
+  const where = (nth) => page.evaluate((nth) => {
+    const area = document.getElementById('edit-area');
+    const a = area.getBoundingClientRect();
+    const m = document.querySelector('#edit-marks mark.current').getBoundingClientRect();
+    let at = -1;
+    for (let i = 0; i <= nth; i++) at = area.value.indexOf('needle', at + 1);
+    const caret = (x) => document.caretPositionFromPoint(x, m.top + m.height / 2).offset - at;
+    return {
+      starts: caret(m.left + 2), ends: caret(m.right - 2), second: caret(m.left + 5),
+      inside: m.left >= a.left && m.right <= a.left + area.clientWidth && m.top >= a.top && m.bottom <= a.bottom,
+      scrollLeft: area.scrollLeft,
+    };
+  }, nth);
+
+  let at = await where(0);
+  expect(at.scrollLeft).toBeGreaterThan(100000);
+  expect(at.inside).toBe(true);
+  expect([at.starts, at.second, at.ends]).toEqual([0, 1, 6]);
+
+  // The box stays on the text as the editor is scrolled under it.
+  await page.locator('#edit-area').evaluate((el) => { el.scrollLeft += 120; });
+  await expect.poll(async () => (await where(0)).starts).toBe(0);
+  expect((await where(0)).ends).toBe(6);
+
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#search-count')).toHaveText('2/2');
+  const first = at.scrollLeft;
+  at = await where(1);
+  expect(at.scrollLeft).toBeGreaterThan(first + 100000);
+  expect(at.inside).toBe(true);
+  expect([at.starts, at.second, at.ends]).toEqual([0, 1, 6]);
+
+  // Escape leaves the match selected in the text, and the text where it was.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#edit-area')).toBeFocused();
+  expect(await page.locator('#edit-area').evaluate(
+    el => [el.value.slice(el.selectionStart, el.selectionEnd), el.selectionStart === el.value.lastIndexOf('needle')]))
+    .toEqual(['needle', true]);
+  expect(await page.locator('#edit-area').evaluate(el => el.scrollLeft)).toBe(at.scrollLeft);
+});
+
+// ----------------------------------------------------------------
+// The search field in a narrow window
+// ----------------------------------------------------------------
+test('68. in a narrow window the search field folds to its magnifier and opens on focus', async ({ page }) => {
+  await load(page);
+  const width = () => page.locator('#search-field').evaluate(el => el.getBoundingClientRect().width);
+
+  expect(await width()).toBe(230);                               // a wide window: the whole field
+  await page.setViewportSize({ width: 700, height: 600 });
+  expect(await width()).toBe(26);
+  await expect(page.locator('#search-next')).toBeHidden();
+  const copyAt = (await page.locator('#btn-copy').boundingBox()).x;
+
+  // ⌘F opens it across the toolbar, over the actions, which do not move.
+  await page.keyboard.press('Meta+f');
+  await expect(page.locator('#search-input')).toBeFocused();
+  expect(await width()).toBeGreaterThan(600);
+  await expect(page.locator('#toolbar')).toHaveCSS('height', '38px');
+  expect((await page.locator('#btn-copy').boundingBox()).x).toBe(copyAt);
+
+  // Pressing a chevron must not shut it under the pointer.
+  await page.keyboard.type('a');
+  await page.locator('#search-next').click();
+  await expect(page.locator('#search-count')).toContainText('2/');
+  await expect(page.locator('#search-input')).toBeFocused();
+  expect(await width()).toBeGreaterThan(600);
+
+  // Clicking away folds it again; the fill says a search is still standing.
+  await page.locator('#tree-scroll').click({ position: { x: 300, y: 400 } });
+  expect(await width()).toBe(26);
+  await expect(page.locator('#search-field')).toHaveClass(/has-value/);
+  const standing = await page.locator('#search-field').evaluate(el => getComputedStyle(el).backgroundColor);
+  expect((await tinted(page)).length).toBeGreaterThan(1);
+
+  // Pressing the magnifier opens it again, with the query still there.
+  await page.locator('#search-field').click();
+  await expect(page.locator('#search-input')).toBeFocused();
+  await expect(page.locator('#search-input')).toHaveValue('a');
+  await page.keyboard.press('Escape');
+  expect(await width()).toBe(26);
+  expect(await page.locator('#search-field').evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe(standing);
 });

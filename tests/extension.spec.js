@@ -119,6 +119,13 @@ test('renders a JSON URL in the tree viewer', async () => {
   await expect(page.locator('#edit-line-numbers')).toContainText('1');
   await expect(page.locator('#edit-highlight .tok-str', { hasText: '"Springfield"' })).toBeVisible();
 
+  // Search works in both views, on a page whose keys the extension shares.
+  await page.locator('#search-input').fill('springfield');
+  await expect(page.locator('#edit-marks mark.current')).toHaveText('Springfield');
+  await page.locator('#btn-edit').click();
+  await expect(page.locator('.tree-row.search-match')).toHaveAttribute('data-path', 'address.city');
+  await expect(page.locator('#search-count')).toHaveText('1/1');
+
   // No leftovers from the raw document.
   await expect(page.locator('pre')).toHaveCount(0);
 

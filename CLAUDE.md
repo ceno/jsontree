@@ -2,9 +2,9 @@
 
 A static, zero-dependency JSON viewer and formatter that is meant to read as a
 native macOS utility rather than a web page: one window with a unified toolbar,
-a find bar summoned with ⌘F, a single content area holding the tree / empty
-state / source editor, and one status bar whose height never changes between
-states. It is vanilla HTML/CSS/JS with no build step and
+a search field in it that works over the tree and in the source editor, a
+single content area holding the tree / empty state / source editor, and one
+status bar whose height never changes between states. It is vanilla HTML/CSS/JS with no build step and
 no framework — `index.html`, `css/style.css` and `js/app.js` at the repo root
 are the whole app, served straight from GitHub Pages. The same three files are
 also copied into `extension/vendor/` to ship as a Chrome extension that takes
@@ -18,7 +18,7 @@ changing behaviour, and update it when behaviour changes.**
 npm install                      # once
 npx playwright install chromium  # once
 
-npm test                         # build the extension, then run all 62 tests
+npm test                         # build the extension, then run all 71 tests
 npm run build:extension          # copy the app into extension/vendor/
 
 npx http-server . -p 8080 -c-1   # serve locally at http://localhost:8080
@@ -29,7 +29,7 @@ Narrower test runs:
 ```bash
 npx playwright test tests/app.spec.js            # app only (fast)
 npx playwright test tests/extension.spec.js      # the real extension in Chrome
-npx playwright test -g "find bar"                # by test name
+npx playwright test -g "search"                  # by test name
 npx playwright test --reporter=line              # quieter output
 ```
 
@@ -60,7 +60,9 @@ npx playwright test --reporter=line              # quieter output
   text, and the two elements must share every metric that places a glyph — one
   CSS rule holds them, and `EDIT_LINE_HEIGHT` in `js/app.js` tracks its
   line-height. `#edit-highlight` is deliberately not a `<pre>`: the extension
-  tells a raw JSON page by its `<pre>`.
+  tells a raw JSON page by its `<pre>`. Search adds a third copy under both,
+  `#edit-marks`, bound by the same rule — so a `<mark>` in it must never get
+  padding or a border, which would push the text after it out of line.
 - **Don't trust `JSON.parse`'s message for an error position.** Truncated input
   raises `Unexpected end of JSON input` with no position at all. `locateJsonError()`
   in `js/app.js` re-walks the text itself and must stay exactly as strict as the

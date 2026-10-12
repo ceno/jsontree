@@ -6,8 +6,8 @@ Runs entirely in the browser; nothing you paste is sent anywhere.
 ## Features
 
 - Interactive tree viewer with expand/collapse and full keyboard navigation
-- Find bar on ⌘F — incremental, with a match count, revealing matches buried
-  in collapsed subtrees
+- Search on ⌘F, in the tree and in the source editor — incremental, with a
+  match count, revealing matches buried in collapsed subtrees
 - A status bar that always shows validity, size and the selected node's path
   (`results[1].author.orcid`), click to copy
 - Source editor with line numbers, syntax colouring and precise line/column
@@ -19,7 +19,7 @@ Runs entirely in the browser; nothing you paste is sent anywhere.
 
 | | |
 |---|---|
-| `⌘F` | Find · `⌘G` / `⇧⌘G` next and previous · `Esc` closes |
+| `⌘F` | Search · `⌘G` / `⇧⌘G` next and previous · `Esc` clears |
 | `↑` `↓` | Move through the tree |
 | `←` `→` | Collapse / expand, or step out and in |
 | `⌘⌥←` `⌘⌥→` | Collapse all / expand all |

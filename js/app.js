@@ -1,8 +1,8 @@
 /* jsontree — app.js
  *
- * One window, no modes-as-tabs: a unified toolbar, a find bar summoned with
- * ⌘F, and a status bar that is the same height in every state. The tree keeps
- * the previous release's layout.
+ * One window, no modes-as-tabs: a unified toolbar with a search field that
+ * works over the tree and in the source editor alike, and a status bar that is
+ * the same height in every state. The tree keeps the previous release's layout.
  */
 var __jsontreeMain = function () {
   'use strict';
@@ -23,20 +23,20 @@ var __jsontreeMain = function () {
   const btnMinify      = document.getElementById('btn-minify');
   const btnEdit        = document.getElementById('btn-edit');
   const btnEditLabel   = document.getElementById('btn-edit-label');
-  const btnFindOpen    = document.getElementById('btn-find-open');
 
-  const findbar   = document.getElementById('findbar');
-  const findInput = document.getElementById('find-input');
-  const findCount = document.getElementById('find-count');
-  const findPrev  = document.getElementById('find-prev');
-  const findNext  = document.getElementById('find-next');
-  const findDone  = document.getElementById('find-done');
+  const searchField = document.getElementById('search-field');
+  const searchInput = document.getElementById('search-input');
+  const searchCount = document.getElementById('search-count');
+  const searchPrev  = document.getElementById('search-prev');
+  const searchNext  = document.getElementById('search-next');
+  const searchClear = document.getElementById('search-clear');
 
   const editWrap        = document.getElementById('edit-wrap');
   const editArea        = document.getElementById('edit-area');
   const editGutter      = document.getElementById('edit-gutter');
   const editGutterInner = document.getElementById('edit-gutter-inner');
   const editLineNumbers = document.getElementById('edit-line-numbers');
+  const editMarks       = document.getElementById('edit-marks');
   const editHighlight   = document.getElementById('edit-highlight');
 
   const statusLeft = document.getElementById('status-left');
@@ -45,7 +45,7 @@ var __jsontreeMain = function () {
   const EDIT_LINE_HEIGHT = 20;            // px; must track the editor's line-height in style.css
   const EDIT_OVERSCAN = 40;               // lines drawn beyond each edge of the editor
   const HIGHLIGHT_LIMIT = 100000;         // characters; more than this on screen is not coloured
-  const PATH_HINT = '⌘F Find';
+  const PATH_HINT = '⌘F Search';
 
   // ----------------------------------------------------------------
   // State
@@ -58,9 +58,10 @@ var __jsontreeMain = function () {
   let lastPath    = null;     // path shown in the status bar
   let statusTimer = null;
 
-  let findOpen   = false;
-  let findMarks  = [];        // every <mark> in document order
-  let findIndex  = -1;
+  let searchQuery   = '';     // what is being looked for, trimmed; '' when idle
+  let searchRows    = [];     // over the tree: the rows that match, in order
+  let searchOffsets = [];     // in the editor: where each match starts in the text
+  let searchIndex   = -1;     // the current match, in whichever list is live
 
   // ----------------------------------------------------------------
   // JSON helpers
@@ -335,9 +336,20 @@ var __jsontreeMain = function () {
   // ----------------------------------------------------------------
   function describeDocument() {
     if (isEmpty) return 'Empty';
+    const size = formatBytes(byteSize(rawText));
+    const found = describeSearch();
+    if (found) return 'Valid JSON · ' + found + ' · ' + size;
     const n = countNodes(parsedData);
-    return 'Valid JSON · ' + formatBytes(byteSize(rawText)) + ' · ' +
-           n + (n === 1 ? ' node' : ' nodes');
+    return 'Valid JSON · ' + size + ' · ' + n + (n === 1 ? ' node' : ' nodes');
+  }
+
+  // While a search stands, its tally takes the place of the node or line
+  // count: "2 of 5 matches for “city”".
+  function describeSearch() {
+    if (!searchQuery) return '';
+    const total = searchTotal();
+    return (total ? (searchIndex + 1) + ' of ' + total : 'No') +
+           (total === 1 ? ' match' : ' matches') + ' for “' + searchQuery + '”';
   }
 
   // Re-derives both the text and its severity. describeEditBuffer() returns the
@@ -358,8 +370,10 @@ var __jsontreeMain = function () {
     const lines = text === '' ? 0 : text.split('\n').length;
     const res = tryParse(text);
     if (!res.ok) return res.message;
+    const size = formatBytes(byteSize(text));
+    const found = describeSearch();
     return (res.trulyEmpty ? 'Empty' : 'Valid JSON') + ' · ' +
-           formatBytes(byteSize(text)) + ' · ' + lines + ' lines';
+           (found ? found + ' · ' + size : size + ' · ' + lines + ' lines');
   }
 
   function showStatus(msg) {
@@ -522,12 +536,11 @@ var __jsontreeMain = function () {
     labelEl.className = 'tree-label';
     const labelText = isContainer ? key : key + ' : ' + formatLeafValue(value);
     labelEl.textContent = labelText;
-    labelEl._rawText = labelText;   // find highlighting rebuilds from this
     rowEl.appendChild(labelEl);
 
     if (isContainer) {
-      // Beside the label rather than in it: find searches and rewrites label
-      // text, and must neither match "keys" on every object nor wipe the note.
+      // Beside the label rather than in it: search looks through the label,
+      // and must not match "keys" on every object.
       const countEl = document.createElement('span');
       countEl.className = 'tree-count';
       countEl.textContent = describeCount(value, type);
@@ -541,7 +554,8 @@ var __jsontreeMain = function () {
       isContainer: isContainer,
       parentData: parentData,
       depth: depth,
-      path: path
+      path: path,
+      label: labelText        // what search looks through
     };
 
     rowEl.addEventListener('click', () => selectRow(rowEl));
@@ -591,8 +605,8 @@ var __jsontreeMain = function () {
   const nodeAnimMap = new WeakMap();
   const ANIM_DURATION = 250;
 
-  // The find bar honours this in CSS; the expand/collapse slide is
-  // driven here, so it has to ask as well.
+  // The stylesheet honours this for its own transitions; the expand/collapse
+  // slide is driven here, so it has to ask as well.
   const reducedMotion = window.matchMedia
     ? window.matchMedia('(prefers-reduced-motion: reduce)')
     : { matches: false };
@@ -774,114 +788,154 @@ var __jsontreeMain = function () {
   }
 
   // ----------------------------------------------------------------
-  // Find
+  // Search
+  //
+  // One field, always in the toolbar, for both views. Over the tree it finds
+  // rows: every row whose label holds the query is tinted, and the current
+  // one is selected. In the editor it finds text: every occurrence is marked,
+  // the current one more strongly. Either way it counts them and steps
+  // through them, and the query stands when the view changes.
   // ----------------------------------------------------------------
-  function allLabels() {
-    return Array.prototype.slice.call(treeContainer.querySelectorAll('.tree-label'));
+  function allRows() {
+    return Array.prototype.slice.call(treeContainer.querySelectorAll('.tree-row'));
   }
 
-  function clearFindHighlights() {
-    allLabels().forEach(l => { l.textContent = l._rawText; });
-    findMarks = [];
-    findIndex = -1;
+  function escapeRegExp(text) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
-  function runFind(query) {
-    clearFindHighlights();
-    if (!query) { updateFindCount(); return; }
+  // Case is ignored by the expression rather than by lowercasing both sides:
+  // lowercasing can change a string's length, which would shift every offset
+  // after it. Matched this way a hit is always as long as the query.
+  function searchPattern(flags) {
+    return new RegExp(escapeRegExp(searchQuery), flags);
+  }
 
-    const needle = query.toLowerCase();
-    allLabels().forEach(labelEl => {
-      const text = labelEl._rawText;
-      const hay = text.toLowerCase();
-      if (hay.indexOf(needle) === -1) return;
+  function searchTotal() {
+    return appEl.classList.contains('editing') ? searchOffsets.length : searchRows.length;
+  }
 
-      labelEl.textContent = '';
-      let pos = 0;
-      let idx;
-      while ((idx = hay.indexOf(needle, pos)) !== -1) {
-        if (idx > pos) labelEl.appendChild(document.createTextNode(text.slice(pos, idx)));
-        const mark = document.createElement('mark');
-        mark.className = 'find-match';
-        mark.textContent = text.slice(idx, idx + needle.length);
-        labelEl.appendChild(mark);
-        findMarks.push(mark);
-        pos = idx + needle.length;
-      }
-      if (pos < text.length) labelEl.appendChild(document.createTextNode(text.slice(pos)));
+  function findInTree() {
+    const re = searchQuery ? searchPattern('i') : null;
+    searchRows = [];
+    allRows().forEach((row) => {
+      const hit = !!re && re.test(row._nodeData.label);
+      row.classList.toggle('search-match', hit);
+      if (hit) searchRows.push(row);
     });
-
-    if (findMarks.length) gotoMatch(0);
-    else updateFindCount();
   }
 
-  function updateFindCount() {
-    const total = findMarks.length;
-    findCount.textContent = total ? (findIndex + 1) + ' of ' + total : '0 of 0';
-    findPrev.disabled = total === 0;
-    findNext.disabled = total === 0;
+  function findInText() {
+    searchOffsets = [];
+    if (!searchQuery) return;
+    const re = searchPattern('gi');
+    let m;
+    while ((m = re.exec(editText)) !== null) searchOffsets.push(m.index);
   }
 
-  function gotoMatch(i) {
-    if (!findMarks.length) { updateFindCount(); return; }
-    if (findIndex >= 0 && findMarks[findIndex]) {
-      findMarks[findIndex].classList.remove('current');
-    }
-    findIndex = (i % findMarks.length + findMarks.length) % findMarks.length;
+  // Looks again in whichever view is showing. `jump` starts over at the first
+  // match; otherwise the current match keeps its place in the list, which is
+  // what typing in the editor under a standing query wants.
+  function syncSearch(jump) {
+    if (appEl.classList.contains('editing')) findInText();
+    else findInTree();
 
-    const mark = findMarks[findIndex];
-    mark.classList.add('current');
-
-    const row = mark.closest('.tree-row');
-    if (row) {
-      expandAncestors(row);
-      selectRow(row);
-      row.scrollIntoView({ block: 'center' });
-    }
-    updateFindCount();
+    const total = searchTotal();
+    if (total === 0) searchIndex = -1;
+    else if (jump) searchIndex = 0;
+    else searchIndex = Math.min(Math.max(searchIndex, 0), total - 1);
+    showSearchCount();
   }
 
-  function openFind() {
-    // The find bar searches tree labels. Over the editor the tree is hidden, so
-    // opening it would report matches and a path for rows nobody can see, and
-    // steal the caret out of the textarea.
+  function showSearchCount() {
+    const total = searchTotal();
+    searchCount.textContent = searchQuery ? (searchIndex + 1) + '/' + total : '';
+    searchPrev.disabled = total === 0;
+    searchNext.disabled = total === 0;
+  }
+
+  // The query or the view has changed: search afresh and go to the first match.
+  function runSearch() {
+    searchQuery = searchInput.value.trim();
+    searchField.classList.toggle('has-value', searchInput.value !== '');
+    syncSearch(true);
+    // Going to a match draws it. With none to go to, the editor still has the
+    // last query's marks to take away.
+    if (searchIndex >= 0) revealMatch();
+    else if (appEl.classList.contains('editing')) placeEditLines(true);
+    restoreStatus();
+  }
+
+  function stepSearch(delta) {
+    const total = searchTotal();
+    if (!total) return;
+    searchIndex = ((searchIndex + delta) % total + total) % total;
+    showSearchCount();
+    revealMatch();
+    restoreStatus();
+  }
+
+  function revealMatch() {
     if (appEl.classList.contains('editing')) {
-      showStatus('Find searches the tree — leave the editor first');
+      revealTextMatch(searchOffsets[searchIndex]);
       return;
     }
-    if (isEmpty) {
-      showStatus('Nothing to find');
-      return;
-    }
-    findOpen = true;
-    findbar.classList.add('open');
-    btnFindOpen.classList.add('on');
-    findInput.focus();
-    findInput.select();
+    const row = searchRows[searchIndex];
+    expandAncestors(row);
+    selectRow(row);
+    row.scrollIntoView({ block: 'center' });
   }
 
-  function closeFind() {
-    findOpen = false;
-    findbar.classList.remove('open');
-    btnFindOpen.classList.remove('on');
-    clearFindHighlights();
-    updateFindCount();
+  function clearSearch() {
+    searchInput.value = '';
+    runSearch();
   }
 
-  findInput.addEventListener('input', () => runFind(findInput.value));
-  findInput.addEventListener('keydown', (e) => {
+  // Escape in the field: the search is over, and the keyboard goes back to
+  // what was being searched. In the editor that means the caret, left on the
+  // match that was current, selected — ready to be typed over or copied.
+  function leaveSearch() {
+    const editing = appEl.classList.contains('editing');
+    const at = editing && searchIndex >= 0 ? searchOffsets[searchIndex] : -1;
+    const length = searchQuery.length;
+    clearSearch();
+    searchInput.blur();
+    if (!editing) return;
+    // Taking the focus scrolls a textarea to its caret, which is still where
+    // it was before the search; the match is what should stay in view.
+    const top = editArea.scrollTop;
+    const left = editArea.scrollLeft;
+    if (at >= 0) editArea.setSelectionRange(at, at + length);
+    editArea.focus();
+    editArea.scrollTop = top;
+    editArea.scrollLeft = left;
+    placeEditLines(false);
+  }
+
+  searchInput.addEventListener('input', runSearch);
+  searchInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      gotoMatch(findIndex + (e.shiftKey ? -1 : 1));
+      stepSearch(e.shiftKey ? -1 : 1);
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      closeFind();
+      e.stopPropagation();
+      leaveSearch();
     }
   });
-  findNext.addEventListener('click', () => gotoMatch(findIndex + 1));
-  findPrev.addEventListener('click', () => gotoMatch(findIndex - 1));
-  findDone.addEventListener('click', closeFind);
-  btnFindOpen.addEventListener('click', () => (findOpen ? closeFind() : openFind()));
+  searchNext.addEventListener('click', () => stepSearch(1));
+  searchPrev.addEventListener('click', () => stepSearch(-1));
+  searchClear.addEventListener('click', () => { clearSearch(); searchInput.focus(); });
+
+  // Pressing anywhere on the field that is not the input — the magnifier, the
+  // padding, a chevron — must not take the focus away from the input: where
+  // the field has folded down to its magnifier it is only open while focused,
+  // and would shut under the pointer. Pressing its bare parts opens it.
+  searchField.addEventListener('mousedown', (e) => {
+    if (e.target === searchInput) return;
+    e.preventDefault();
+    if (!e.target.closest('button')) searchInput.focus();
+  });
 
   // ----------------------------------------------------------------
   // Document loading
@@ -891,8 +945,6 @@ var __jsontreeMain = function () {
     parsedData = data;
     isEmpty = trulyEmpty;
     rawText = trulyEmpty ? '' : JSON.stringify(data, null, 2);
-
-    if (findOpen) closeFind();
 
     appEl.classList.toggle('empty', trulyEmpty);
     if (trulyEmpty) {
@@ -904,6 +956,9 @@ var __jsontreeMain = function () {
       // across the top conveying nothing, and the status bar is more useful
       // showing the ⌘F hint until the reader picks a node.
     }
+    // These are new rows. A search left standing — from the editor, say — is
+    // run against them, which selects its first match.
+    runSearch();
     setPath(selectedRow ? selectedRow._nodeData.path : null);
     restoreStatus();
   }
@@ -917,7 +972,6 @@ var __jsontreeMain = function () {
     editArea.value = text === undefined ? rawText : text;
     appEl.classList.add('editing');
     labelModeSwitch();
-    if (findOpen) closeFind();
     editArea.focus();
     // focus() leaves the caret at the end, which scrolls a long document out
     // of view; start at the top where the reader expects to be. This has to
@@ -926,6 +980,8 @@ var __jsontreeMain = function () {
     editArea.scrollTop = 0;
     editArea.scrollLeft = 0;
     validateEditBuffer();
+    // A search left standing over the tree now looks through the text.
+    if (searchQuery) runSearch();
   }
 
   // Leaving requires a document we can render; the status bar already says
@@ -961,9 +1017,9 @@ var __jsontreeMain = function () {
   // ----------------------------------------------------------------
   // Drawing the editor
   //
-  // The line numbers, the coloured copy of the text and the error marker are
-  // all derived from the textarea's text — and only for the lines on screen,
-  // plus a margin either side. Redrawing a whole document on every keystroke
+  // The line numbers, the coloured copy of the text, the search marks and the
+  // error marker are all derived from the textarea's text — and only for the
+  // lines on screen, plus a margin either side. Redrawing a whole document on every keystroke
   // costs more than a tenth of a second at a few hundred kilobytes; a
   // window of it costs the same whatever the document's size.
   // ----------------------------------------------------------------
@@ -972,6 +1028,7 @@ var __jsontreeMain = function () {
   let editFault = null;        // the failed tryParse result, when invalid
   let drawnFirst = 0;          // lines currently drawn, inclusive…
   let drawnLast = -1;          // …and none yet
+  let plainMatch = null;       // where the current match was found on text too long to mark
 
   function indexLines(text) {
     const starts = [0];
@@ -1036,6 +1093,137 @@ var __jsontreeMain = function () {
            colourJson(text.slice(eol));
   }
 
+  // Index of the first entry of a sorted array that is not below `value`.
+  function lowerBound(sorted, value) {
+    let lo = 0;
+    let hi = sorted.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (sorted[mid] < value) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  function lineOfOffset(at) {
+    return lowerBound(editLineStarts, at + 1) - 1;
+  }
+
+  // A third copy of the text from `start` to `end`, nothing of it showing but
+  // the ground behind each match. A match never crosses a line break — the
+  // query has none in it — so whole lines can be marked on their own.
+  function markMatches(start, end) {
+    const length = searchQuery.length;
+    let i = lowerBound(searchOffsets, start);
+    if (i === searchOffsets.length || searchOffsets[i] + length > end) return '';
+
+    let html = '';
+    let done = start;
+    for (; i < searchOffsets.length && searchOffsets[i] + length <= end; i++) {
+      const at = searchOffsets[i];
+      html += escapeHtml(editText.slice(done, at)) +
+              (i === searchIndex ? '<mark class="current">' : '<mark>') +
+              escapeHtml(editText.slice(at, at + length)) + '</mark>';
+      done = at + length;
+    }
+    return html + escapeHtml(editText.slice(done, end));
+  }
+
+  // How wide a short run of text is when the editor draws it.
+  function measureEditText(text) {
+    const probe = document.createElement('span');
+    probe.className = 'edit-probe';
+    probe.textContent = text;
+    editMarks.appendChild(probe);
+    const width = probe.getBoundingClientRect().width;
+    probe.remove();
+    return width;
+  }
+
+  // Which character of the textarea's text the caret would land before, for a
+  // point on the page — or null where the browser cannot say.
+  function caretAtPoint(x, y) {
+    if (typeof document.caretPositionFromPoint !== 'function') return null;
+    const caret = document.caretPositionFromPoint(x, y);
+    return caret && caret.offsetNode === editArea ? caret.offset : null;
+  }
+
+  // Text too long to colour is too long to mark by drawing it again, so the
+  // current match alone is shown there, as a box. Where to put it cannot be
+  // measured from outside: lay a copy of a very long line out elsewhere and,
+  // once it holds a few thousand runs in a second font, it comes out tens of
+  // pixels away from where the textarea has it. So the textarea is asked, by
+  // hit-testing it — sliding the text until the match is under the middle of
+  // the editor, then finding where along that row the caret stops landing
+  // before the match's first character. That costs a few milliseconds
+  // whatever the line's length.
+  function locatePlainMatch(at, line, style) {
+    plainMatch = null;
+    const end = at + searchQuery.length;
+    const rect = editArea.getBoundingClientRect();
+    const margin = parseFloat(style.paddingLeft);
+    const y = rect.top + parseFloat(style.paddingTop) +
+              line * EDIT_LINE_HEIGHT - editArea.scrollTop + EDIT_LINE_HEIGHT / 2;
+    const x0 = rect.left;
+    const x1 = rect.left + editArea.clientWidth;
+
+    if (caretAtPoint(x0 + margin, y) === null) {
+      // No hit-testing here: go to roughly the right place, and mark nothing
+      // rather than mark the wrong text.
+      const along = measureEditText(editText.slice(editLineStarts[line], at));
+      editArea.scrollLeft = Math.max(0, along - editArea.clientWidth / 2);
+      return;
+    }
+
+    // A match already in view is left where it is.
+    if (caretAtPoint(x0 + margin, y) > at || caretAtPoint(x1 - margin, y) < end) {
+      const mid = (x0 + x1) / 2;
+      let lo = 0;
+      let hi = editArea.scrollWidth - editArea.clientWidth;
+      editArea.scrollLeft = 0;
+      if (caretAtPoint(mid, y) >= at) hi = 0;
+      while (hi - lo > 1) {
+        const scroll = Math.floor((lo + hi) / 2);
+        editArea.scrollLeft = scroll;
+        if (caretAtPoint(mid, y) < at) lo = scroll;
+        else hi = scroll;
+      }
+      editArea.scrollLeft = hi;
+    }
+
+    // The caret starts landing after the match's first character half-way
+    // across it.
+    let before = x0;
+    let after = x1;
+    while (after - before > 0.25) {
+      const x = (before + after) / 2;
+      if (caretAtPoint(x, y) <= at) before = x;
+      else after = x;
+    }
+    const first = String.fromCodePoint(editText.codePointAt(at));
+    plainMatch = {
+      at: at,
+      // The box is placed relative to where the text was scrolled to when it
+      // was found, so that the sum never involves the line's full length —
+      // millions of pixels, on which a transform is only good to the pixel.
+      scrollLeft: editArea.scrollLeft,
+      left: after - measureEditText(first) / 2 - rect.left,
+      width: measureEditText(editText.slice(at, end))
+    };
+  }
+
+  function boxPlainMatch(first, last) {
+    if (!plainMatch || searchIndex < 0 || searchOffsets[searchIndex] !== plainMatch.at) return;
+    const line = lineOfOffset(plainMatch.at);
+    if (line < first || line > last) return;
+    const box = document.createElement('mark');
+    box.className = 'current boxed';
+    box.style.left = plainMatch.left + 'px';
+    box.style.top = (parseFloat(getComputedStyle(editMarks).paddingTop) + (line - first) * EDIT_LINE_HEIGHT) + 'px';
+    box.style.width = plainMatch.width + 'px';
+    editMarks.appendChild(box);
+  }
+
   function drawEditLines(first, last) {
     drawnFirst = first;
     drawnLast = last;
@@ -1052,9 +1240,12 @@ var __jsontreeMain = function () {
     editWrap.classList.toggle('plain', plain);
     if (plain) {
       editHighlight.textContent = '';
+      editMarks.textContent = '';
+      boxPlainMatch(first, last);
     } else {
       editHighlight.innerHTML = colourWithFault(
         editText.slice(start, end), editFault ? editFault.at - start : -1);
+      editMarks.innerHTML = markMatches(start, end);
     }
 
     // The marker lies over the offending line's number, repeating it in red.
@@ -1070,9 +1261,9 @@ var __jsontreeMain = function () {
     }
   }
 
-  // Neither the gutter nor the coloured copy scrolls: both are slid to
+  // Neither the gutter nor the copies of the text scroll: they are slid to
   // wherever the textarea is, and redrawn when it has moved past what was
-  // drawn. `redraw` forces that, for when the text itself has changed.
+  // drawn. `redraw` forces that, for when the text or the search has changed.
   function placeEditLines(redraw) {
     const top = editArea.scrollTop;
     const count = editLineStarts.length;
@@ -1083,7 +1274,40 @@ var __jsontreeMain = function () {
     }
     const dy = drawnFirst * EDIT_LINE_HEIGHT - top;
     editGutterInner.style.transform = 'translateY(' + dy + 'px)';
-    editHighlight.style.transform = 'translate(' + (-editArea.scrollLeft) + 'px, ' + dy + 'px)';
+    const left = editArea.scrollLeft;
+    editHighlight.style.transform = 'translate(' + (-left) + 'px, ' + dy + 'px)';
+    // A box on text too long to mark is placed from where the text was
+    // scrolled to when the match was found, not from the start of its line.
+    const boxed = editMarks.querySelector('mark.boxed');
+    editMarks.style.transform =
+      'translate(' + ((boxed && plainMatch ? plainMatch.scrollLeft : 0) - left) + 'px, ' + dy + 'px)';
+  }
+
+  // Brings a match in the text into view and draws it as the current one. A
+  // match already on screen is left where it is; one that is not is centred.
+  function revealTextMatch(at) {
+    const style = getComputedStyle(editArea);
+    const line = lineOfOffset(at);
+    const top = parseFloat(style.paddingTop) + line * EDIT_LINE_HEIGHT;
+    if (top < editArea.scrollTop ||
+        top + EDIT_LINE_HEIGHT > editArea.scrollTop + editArea.clientHeight) {
+      editArea.scrollTop = Math.max(0, top - (editArea.clientHeight - EDIT_LINE_HEIGHT) / 2);
+    }
+    placeEditLines(true);
+    if (editWrap.classList.contains('plain')) {
+      locatePlainMatch(at, line, style);
+      placeEditLines(true);
+      return;
+    }
+
+    const mark = editMarks.querySelector('mark.current');
+    if (!mark) return;
+    const margin = parseFloat(style.paddingLeft);
+    if (mark.offsetLeft < editArea.scrollLeft + margin ||
+        mark.offsetLeft + mark.offsetWidth > editArea.scrollLeft + editArea.clientWidth - margin) {
+      editArea.scrollLeft = Math.max(0, mark.offsetLeft - editArea.clientWidth / 2);
+      placeEditLines(false);
+    }
   }
 
   // Anything that changes the textarea's text without the reader typing it has
@@ -1093,8 +1317,11 @@ var __jsontreeMain = function () {
     const res = tryParse(editText);
     editFault = res.ok ? null : res;
     editLineStarts = indexLines(editText);
+    plainMatch = null;
     // The gutter is as wide as the last line's number, not the widest drawn.
     editGutter.style.setProperty('--digits', String(editLineStarts.length).length);
+    // The matches of a standing search have moved, or come and gone.
+    syncSearch(false);
     placeEditLines(true);
     return res;
   }
@@ -1181,22 +1408,29 @@ var __jsontreeMain = function () {
     const mod = e.metaKey || e.ctrlKey;
     const key = e.key.toLowerCase();
 
-    if (mod && !e.altKey && key === 'f') { e.preventDefault(); openFind(); return; }
+    if (mod && !e.altKey && key === 'f') {
+      e.preventDefault();
+      searchInput.focus();
+      searchInput.select();
+      return;
+    }
     if (mod && !e.altKey && key === 'g') {
-      if (findOpen) { e.preventDefault(); gotoMatch(findIndex + (e.shiftKey ? -1 : 1)); }
+      if (searchQuery) { e.preventDefault(); stepSearch(e.shiftKey ? -1 : 1); }
       return;
     }
     if (mod && e.altKey && key === 'c') { e.preventDefault(); doCopyPath(); return; }
     if (mod && e.altKey && e.key === 'ArrowLeft')  { e.preventDefault(); collapseAll(); return; }
     if (mod && e.altKey && e.key === 'ArrowRight') { e.preventDefault(); expandAll(); return; }
 
+    // Escape in the search field is the field's own business. From anywhere
+    // else it calls off a search left standing, and moves nothing.
     if (e.key === 'Escape') {
-      if (findOpen) { e.preventDefault(); closeFind(); }
+      if (searchInput.value !== '') { e.preventDefault(); clearSearch(); }
       return;
     }
 
     // Arrow navigation belongs to the tree, not to a focused text field.
-    const typing = document.activeElement === findInput ||
+    const typing = document.activeElement === searchInput ||
                    document.activeElement === editArea;
     if (typing || mod || appEl.classList.contains('editing')) return;
 
@@ -1227,7 +1461,6 @@ var __jsontreeMain = function () {
   // Init
   // ----------------------------------------------------------------
   loadParsed(null, { trulyEmpty: true });
-  updateFindCount();
   // With no document there is nothing to read and one thing to do: put some
   // JSON in. So an empty app opens in the editor, caret ready for a paste. The
   // extension follows this with jsontree.load(), which goes to the tree.

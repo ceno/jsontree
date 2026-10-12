@@ -5,8 +5,8 @@ Chrome extension. Vanilla HTML/CSS/JS: no build step, no framework, no external
 assets, no network at runtime.
 
 The product goal is that it reads as a **native macOS utility** rather than a web
-page — one window, no modal screens, a summoned find bar, and chrome that never
-changes size as you work.
+page — one window, no modal screens, a search field in the toolbar, and chrome
+that never changes size as you work.
 
 ## Files
 
@@ -21,14 +21,13 @@ changes size as you work.
 ```
 #app
   #toolbar       38px, fixed
-  #findbar       0px closed, 34px open
   #content-wrap  the tree, the empty state, or the source editor
   #statusbar     24px, fixed
 ```
 
-The toolbar and status bar are the same height in every state. Opening the find
-bar, entering the editor and emptying the document all leave them untouched —
-the window never flinches.
+The toolbar and status bar are the same height in every state. Searching,
+entering the editor and emptying the document all leave them untouched, and
+nothing between them moves — the window never flinches.
 
 ### Opening
 
@@ -45,9 +44,8 @@ cleared: empty the source, then `View`.
 
 ### Toolbar
 
-Left to right: wordmark · mode switch · actions · spacer · find icon. The
-actions are flat macOS toolbar buttons, 12.5px, rounded hover fill. The find
-icon takes an accent fill while the find bar is open.
+Left to right: wordmark · mode switch · actions · spacer · search field. The
+actions are flat macOS toolbar buttons, 12.5px, rounded hover fill.
 
 The mode switch is the one button that moves between the tree and the source
 editor. It sits directly beside the wordmark, ahead of the actions, because it
@@ -91,7 +89,7 @@ source-list selection in the system accent.
 - A container row ends with a count of what it holds, in the tertiary text
   colour: `6 keys` for an object, `0 items` for an array, singular for exactly
   one. The root counts too. The count describes the document rather than being
-  part of it, so it sits beside the label, not in it, and find does not search
+  part of it, so it sits beside the label, not in it, and search does not look at
   it.
 - Array children are keyed by index.
 - Every row carries `data-path` — `results[1].author.orcid` — which the status
@@ -109,18 +107,60 @@ selected row's path. Selection always wins over the preview — moving by
 keyboard fires no `mouseleave`, so without that the bar would keep showing
 whatever the pointer happened to be resting on. Copy Path copies the selected
 row, falling back to the hovered one only when nothing is selected. Nothing is selected on load, so the status bar can show
-the `⌘F Find` hint until the reader picks a node.
+the `⌘F Search` hint until the reader picks a node.
 
-### Find bar
+### Search
 
-⌘F opens it; it is not permanent chrome. It searches tree labels, so it
-refuses to open over the source editor or an empty document and says why —
-otherwise it would report matches and a path for rows nobody can see, and take
-the caret out of the textarea. Incremental: every keystroke
-re-searches node labels, wraps each hit in `mark.find-match`, and reports
-`N of M`. Moving to a match expands its ancestors, selects the row and scrolls
-it into view. ⌘G / ⇧⌘G and the chevrons cycle with wraparound. Escape or `Done`
-closes and removes every highlight, restoring label text exactly.
+One field, always in the toolbar, at the right: a 230px pill holding a
+magnifier, the input, a count (`2/5`), previous and next chevrons, and a clear
+button that appears once something is typed. It is there in both views and
+searches whichever is showing. ⌘F puts the caret in it.
+
+- **Over the tree** it finds rows. A row matches when its label — the key, or
+  `key : value` — holds the query. Every matching row is tinted; the current
+  one is selected, which expands its ancestors and scrolls it into view. The
+  count is of rows.
+- **In the source editor** it finds text. Every occurrence is marked, the
+  current one more strongly, and the editor scrolls to it — down and across —
+  unless it is already in view. The count is of occurrences, so the same
+  query can count differently in the two views. Invalid JSON is searched like
+  any other text.
+
+Common to both:
+
+- Incremental and case-insensitive; the query is trimmed. Each keystroke
+  searches afresh and goes to the first match.
+- Return, ⌘G and the down chevron go to the next match; Shift-Return, ⇧⌘G and
+  the up chevron to the previous. Both wrap. The chevrons leave the caret in
+  the field.
+- While a query stands, the status bar's left side reads
+  `Valid JSON · 2 of 5 matches for “city” · 1.3 KB`, or `No matches for …`.
+- The query stands when the view changes, and is run again in the new one.
+  Editing the text under a standing query updates the marks and the count and
+  keeps the current match's place in the list rather than starting over.
+- Escape in the field clears it and hands the keyboard back: to the tree,
+  with the last match still selected, or to the editor, with the caret on the
+  last match and that match selected. The view does not move. Escape anywhere
+  else clears a standing query and moves nothing. The clear button empties the
+  field and keeps the caret in it.
+
+The marks in the editor are a third copy of the text under the other two, with
+nothing showing but the ground behind each match, and like them it is only
+drawn for the lines on screen.
+
+On text too long to colour (see the editor, below) there is no copy to mark,
+so only the current match is shown, as a box. Its position is found by
+hit-testing the textarea (`document.caretPositionFromPoint`) rather than by
+measuring a copy of the line: on a line hundreds of thousands of characters
+long that changes font thousands of times, a copy laid out elsewhere lands
+tens of pixels from where the textarea has the text. Editing the text removes
+the box until the next step. Where the browser cannot hit-test a textarea, the
+editor scrolls to roughly the right place and draws no box.
+
+In a window 800px wide or less there is no room for the field beside the
+actions. It folds down to its magnifier and opens across the toolbar, over the
+actions, for as long as it has focus. Folded, it takes the accent fill while a
+query stands. Above 900px it widens to 270px on focus.
 
 ### Status bar
 
@@ -128,7 +168,8 @@ One line, 24px, always present.
 
 - **Left**: `Valid JSON · 1.3 KB · 56 nodes`, or `Empty`, or a transient
   confirmation (`Copied path`), or an error in `--danger`. In the editor it
-  counts lines rather than nodes.
+  counts lines rather than nodes. While a search stands, its tally takes the
+  place of that count; an error still outranks it.
 - **Right**: the selected or hovered path, click to copy; otherwise the
   keyboard hint.
 
@@ -145,7 +186,8 @@ punctuation stay in the default ink.
   there. One typo costs one line its colour, not everything after it.
 - The text is drawn twice. The textarea takes the typing, the caret and the
   selection, but its own glyphs are transparent; a coloured copy behind it is
-  what shows. The two must agree on every metric that places a glyph.
+  what shows. The two must agree on every metric that places a glyph — as
+  must the third copy that search puts under them for its marks.
 - Only the lines on screen are drawn, plus a margin above and below — numbers
   and colour alike — and they are redrawn as the editor scrolls. Drawing
   therefore costs the same in a 2 MB document as in a small one, where
@@ -215,8 +257,12 @@ error, rather than leaving a blank window.
 chromium. `tests/app.spec.js` covers the shell (opening in the editor when
 empty and on the tree when handed a document, the empty state, constant chrome
 heights), the tree (labels, type icons, container counts, expand/collapse,
-connector columns, paths, arrow navigation), find (highlighting, counting, revealing, cycling, cleanup), the
-toolbar (which actions show in
+connector columns, paths, arrow navigation), search over the tree (tinting,
+counting, revealing, stepping, clearing) and in the editor (marking every
+occurrence, marks lying exactly under their text, scrolling to a match,
+following edits, handing the caret back, standing across the view change,
+invalid JSON, the boxed match on a line too long to colour) and the field
+folding in a narrow window, the toolbar (which actions show in
 which view, each of them against the document and the clipboard, and that
 Format and Minify leave the clipboard alone), the editor (round-trip, refusing
 to close while invalid, line numbers, colouring by type, the coloured copy

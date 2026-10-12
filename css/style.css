@@ -1,9 +1,9 @@
 /* ============================================================
    jsontree — a native-feeling macOS JSON viewer.
 
-   Structure: one unified toolbar, a summoned find bar, a single
-   content area (tree / empty state / source editor) and one
-   status bar whose height never changes between states.
+   Structure: one unified toolbar holding the search field, a
+   single content area (tree / empty state / source editor) and
+   one status bar whose height never changes between states.
 
    The tree itself is deliberately unchanged from the previous
    release — same 18px column grid, same disclosure triangles,
@@ -37,7 +37,7 @@
   --accent-pressed: #0a6fd6;
 
   --bg-window: #ececee;     /* chrome behind the app */
-  --bg-sidebar: #f5f5f7;    /* tree source-list tint, find bar, status bar */
+  --bg-sidebar: #f5f5f7;    /* tree source-list tint, status bar */
   --bg-content: #ffffff;    /* editor surface */
   --bg-elevated: #ffffff;   /* raised surfaces: the mode switch */
   --bg-toolbar: rgba(246, 246, 248, 0.82);
@@ -67,6 +67,7 @@
 
   --mark-bg: rgba(255, 204, 0, 0.45);
   --mark-current-bg: rgba(255, 149, 0, 0.75);
+  --match-row: rgba(255, 204, 0, 0.16);   /* a tree row that matches the search */
   /* The accent is the same blue in both themes, so these "on accent"
      tones need no dark redefinition — but they stay tokens, not
      literals, so every component colour traces back to :root. */
@@ -114,6 +115,7 @@
   
     --mark-bg: rgba(255, 214, 10, 0.35);
     --mark-current-bg: rgba(255, 159, 10, 0.6);
+    --match-row: rgba(255, 214, 10, 0.14);
   
     color-scheme: dark;
   }
@@ -152,6 +154,7 @@
 
   --mark-bg: rgba(255, 214, 10, 0.35);
   --mark-current-bg: rgba(255, 159, 10, 0.6);
+  --match-row: rgba(255, 214, 10, 0.14);
 
   color-scheme: dark;
 }
@@ -219,6 +222,7 @@ button {
   border-bottom: 1px solid var(--hairline);
   padding: 0 8px;
   gap: 2px;
+  position: relative;   /* the search field opens over it when the window is narrow */
 }
 
 .brand {
@@ -264,8 +268,8 @@ button {
 }
 
 /* Narrow windows: give up the wordmark, then the separators and some padding,
-   so the find button stays reachable instead of being pushed off the
-   right-hand edge. The icon button never shrinks. */
+   so nothing is pushed off the right-hand edge. The search field has folded
+   down to its magnifier well before this — see below. */
 @media (max-width: 620px) {
   .brand-name { display: none; }
   .tb-sep { margin: 0 3px; }
@@ -350,102 +354,137 @@ button {
 
 .tb-spacer { flex: 1; }
 
-.tb-icon-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  flex-shrink: 0;
-  color: var(--text-secondary);
-}
-
-.tb-icon-btn:hover { background: var(--control-fill); color: var(--text-primary); }
-.tb-icon-btn.on { background: var(--accent); color: var(--text-on-accent); }
-.tb-icon-btn svg { width: 14px; height: 14px; display: block; }
-
 /* ============================================================
-   Find bar — zero height when closed, so opening it never
-   resizes the toolbar or the status bar
+   Search field — always in the toolbar, in both views, so
+   searching never resizes anything
    ============================================================ */
-#findbar {
+.search-field {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 0;
+  gap: 5px;
+  width: 230px;
+  height: 24px;
+  flex-shrink: 0;
+  margin-left: 6px;
+  padding: 0 8px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 999px;
+  background: var(--control-fill);
+  cursor: text;
+  /* While it is changing width its contents can be wider than it is. */
   overflow: hidden;
+  transition: width 0.12s ease, background-color 0.12s ease,
+              border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+/* The ring goes round the whole field, so the input inside draws none. */
+.search-field:focus-within {
+  background: var(--bg-content);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.search-icon {
+  width: 12px;
+  height: 12px;
   flex-shrink: 0;
-  background: var(--bg-sidebar);
-  /* The border width is animated to zero as well: with box-sizing: border-box
-     a 0-height box still paints a 1px border, which left a hairline of chrome
-     behind when the bar was closed. */
-  border-bottom: 0 solid var(--hairline);
-  padding: 0 12px;
-  transition: height 0.16s cubic-bezier(.3, .9, .4, 1);
-}
-
-#findbar.open {
-  height: 34px;
-  border-bottom-width: 1px;
-}
-
-#findbar > svg {
-  width: 13px;
-  height: 13px;
   color: var(--text-tertiary);
-  flex-shrink: 0;
 }
 
-#find-input {
-  border: none;
-  background: transparent;
-  outline: none;
-  font-size: 12.5px;
-  color: var(--text-primary);
+#search-input {
   flex: 1;
-  min-width: 80px;
-  max-width: 320px;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 12px;
+  color: var(--text-primary);
 }
 
-#find-input::placeholder { color: var(--text-tertiary); }
+#search-input:focus-visible { box-shadow: none; }
+#search-input::placeholder { color: var(--text-tertiary); }
 
-#find-count {
-  font-size: 11.5px;
-  color: var(--text-tertiary);
+.search-count {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
   font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
   white-space: nowrap;
-  min-width: 52px;
 }
 
-.find-nav-btn {
+.search-nav,
+.search-clear {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 5px;
-  color: var(--text-secondary);
   flex-shrink: 0;
+  padding: 0;
+  border-radius: 4px;
+  color: var(--text-tertiary);
 }
 
-.find-nav-btn:hover:not(:disabled) { background: var(--control-fill); color: var(--text-primary); }
-.find-nav-btn:disabled { color: var(--text-tertiary); opacity: 0.4; cursor: default; }
-.find-nav-btn svg { width: 10px; height: 10px; }
+.search-nav { width: 14px; height: 14px; }
+.search-nav svg { width: 8px; height: 8px; }
 
-#find-done {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--accent);
-  padding: 4px 8px;
-  border-radius: 5px;
-  flex-shrink: 0;
+/* Nothing to clear until something has been typed. */
+.search-clear { width: 16px; height: 16px; display: none; }
+.search-clear svg { width: 9px; height: 9px; }
+.search-field.has-value .search-clear { display: flex; }
+
+.search-nav:hover:not(:disabled),
+.search-clear:hover { background: var(--control-fill-hover); color: var(--text-primary); }
+.search-nav:disabled { opacity: 0.35; cursor: default; }
+
+/* Where there is room to spare the field widens as it takes focus. */
+@media (min-width: 900px) {
+  .search-field:focus-within { width: 270px; }
 }
 
-#find-done:hover { background: var(--control-fill); }
+/* Where there is not room for it beside the actions at all, the field folds
+   down to its magnifier, and opens across the toolbar for as long as it has
+   focus. A search left standing shows as an accent fill on the magnifier,
+   since its text is out of sight. */
+@media (max-width: 800px) {
+  .search-field { transition: none; }
+
+  .search-field:not(:focus-within) {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+    border-color: transparent;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .search-field:not(:focus-within):hover { background: var(--control-fill); }
+  .search-field:not(:focus-within) .search-icon { width: 14px; height: 14px; color: var(--text-secondary); }
+  .search-field.has-value:not(:focus-within) { background: var(--accent); }
+  .search-field.has-value:not(:focus-within) .search-icon { color: var(--text-on-accent); }
+
+  /* Out of sight, but the input has to stay focusable: focusing it is what
+     opens the field. */
+  .search-field:not(:focus-within) #search-input { flex: none; width: 0; padding: 0; opacity: 0; }
+  .search-field:not(:focus-within) .search-count,
+  .search-field:not(:focus-within) .search-nav,
+  .search-field:not(:focus-within) .search-clear { display: none; }
+
+  .search-field:focus-within {
+    position: absolute;
+    top: 7px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    margin: 0;
+    z-index: 1;
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
-  #findbar { transition: none; }
+  .search-field { transition: none; }
 }
 
 /* ============================================================
@@ -639,7 +678,7 @@ button {
 }
 
 /* How much a container holds — "6 keys", "0 items" — readable before it is
-   opened. A sibling of the label, not part of it: find leaves it alone. */
+   opened. A sibling of the label, not part of it: search leaves it alone. */
 .tree-count {
   margin-left: 4px;
   font-size: 11px;
@@ -656,21 +695,9 @@ button {
   display: none;
 }
 
-/* Find highlights inside tree labels */
-mark.find-match {
-  background: var(--mark-bg);
-  color: inherit;
-  border-radius: 2px;
-}
-
-mark.find-match.current {
-  background: var(--mark-current-bg);
-  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.5);
-}
-
-/* A highlight on the selected row sits on accent blue, so the label's
-   white would vanish into the mark; put the ink back to primary. */
-.tree-row.selected mark.find-match { color: var(--text-primary); }
+/* Search tints every row that matches. The current match needs nothing of
+   its own: it is the selected row, and the selection outranks the tint. */
+.tree-row.search-match:not(.selected) { background: var(--match-row); }
 
 /* ============================================================
    Empty state
@@ -777,10 +804,12 @@ mark.find-match.current {
   overflow: hidden;
 }
 
-/* The two copies of the text have to agree to the pixel, or the caret drifts
-   away from the glyphs it is supposed to sit between. Everything that sets a
+/* The copies of the text have to agree to the pixel, or the caret drifts away
+   from the glyphs it is supposed to sit between and the search marks away
+   from the text they are supposed to lie under. Everything that sets a
    glyph's position lives in this one rule; EDIT_LINE_HEIGHT in app.js tracks
    the line-height. */
+#edit-marks,
 #edit-highlight,
 #edit-area {
   margin: 0;
@@ -794,13 +823,33 @@ mark.find-match.current {
   tab-size: 2;
 }
 
+#edit-marks,
 #edit-highlight {
   position: absolute;
   top: 0;
   left: 0;
-  color: var(--text-primary);
   pointer-events: none;
 }
+
+#edit-highlight { color: var(--text-primary); }
+
+/* The bottom copy shows none of its text, only the ground behind each match
+   of the search — which is why the marks may not be given any padding, or
+   they would push the text after them out of line with the copies above. */
+#edit-marks { color: transparent; }
+
+#edit-marks mark {
+  color: transparent;
+  background: var(--mark-bg);
+  border-radius: 2px;
+}
+
+#edit-marks mark.current { background: var(--mark-current-bg); }
+
+/* Text too long to draw again gets the current match alone, as a box put
+   where it was measured to be. */
+#edit-marks mark.boxed { position: absolute; height: 20px; }
+.edit-probe { position: absolute; visibility: hidden; }
 
 #edit-area {
   position: absolute;
@@ -843,8 +892,8 @@ mark.find-match.current {
 #edit-wrap.plain #edit-area { color: var(--text-primary); }
 
 /* ============================================================
-   Status bar — 24px in every state, including while the find
-   bar is open and while editing
+   Status bar — 24px in every state, including while searching
+   and while editing
    ============================================================ */
 #statusbar {
   height: 24px;

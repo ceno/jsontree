@@ -12,11 +12,12 @@
 <body>
   <div id="app" class="app">
 
-    <!-- Unified toolbar: wordmark and mode switch, then the actions, with
-         search on the right. The switch names the view it leads to: Edit over
-         the tree, View in the editor. Copy is always the first action; the
-         rest are the tree's (tb-view) or the source editor's (tb-edit), and
-         only one set shows at a time. -->
+    <!-- Unified toolbar: wordmark and mode switch, then the actions, with the
+         search field on the right. The switch names the view it leads to:
+         Edit over the tree, View in the editor. Copy is always the first
+         action; the rest are the tree's (tb-view) or the source editor's
+         (tb-edit), and only one set shows at a time. The search field is
+         there in both: it finds rows over the tree and text in the editor. -->
     <div id="toolbar">
       <div class="brand"><span class="brand-mark">{ }</span><span class="brand-name">jsontree</span></div>
       <button class="tb-btn tb-mode" id="btn-edit" title="Edit the source">
@@ -34,23 +35,20 @@
       <button class="tb-btn tb-edit" id="btn-format" title="Re-indent with two spaces">Format</button>
       <button class="tb-btn tb-edit" id="btn-minify" title="Remove all whitespace">Minify</button>
       <div class="tb-spacer"></div>
-      <button class="tb-icon-btn" id="btn-find-open" aria-label="Find (⌘F)" title="Find (⌘F)">
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.6"/><line x1="11" y1="11" x2="15" y2="15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-
-    <!-- Find bar: summoned with ⌘F, collapses to zero height when closed -->
-    <div id="findbar">
-      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.6"/><line x1="11" y1="11" x2="15" y2="15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-      <input id="find-input" placeholder="Find in document" autocomplete="off" spellcheck="false" aria-label="Find">
-      <span id="find-count">0 of 0</span>
-      <button class="find-nav-btn" id="find-prev" aria-label="Previous match" title="Previous (⇧⌘G)">
-        <svg viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2 6.5L5 3.5L8 6.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-      <button class="find-nav-btn" id="find-next" aria-label="Next match" title="Next (⌘G)">
-        <svg viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-      <button id="find-done">Done</button>
+      <div class="search-field" id="search-field">
+        <svg class="search-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M11.2 11.2 14.5 14.5M12.8 7.4A5.4 5.4 0 1 1 2 7.4a5.4 5.4 0 0 1 10.8 0Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <input type="text" id="search-input" placeholder="Search" autocomplete="off" spellcheck="false" aria-label="Search" title="Search (⌘F)">
+        <span class="search-count" id="search-count" aria-live="polite"></span>
+        <button class="search-nav" id="search-prev" aria-label="Previous match" title="Previous match (⇧⌘G)" disabled>
+          <svg viewBox="0 0 8 6" fill="none" aria-hidden="true"><path d="M1 4.5 4 1.5 7 4.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="search-nav" id="search-next" aria-label="Next match" title="Next match (⌘G)" disabled>
+          <svg viewBox="0 0 8 6" fill="none" aria-hidden="true"><path d="M1 1.5 4 4.5 7 1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="search-clear" id="search-clear" aria-label="Clear search" title="Clear (Esc)">
+          <svg viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M1.5 1.5 8.5 8.5M8.5 1.5 1.5 8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </button>
+      </div>
     </div>
 
     <!-- Content: the tree, the empty state, or the source editor -->
@@ -65,10 +63,11 @@
 
       <!-- The text is drawn twice: the textarea takes the typing but its
            glyphs are transparent, and the coloured copy behind it is what
-           shows. -->
+           shows. Behind that again, search paints its matches. -->
       <div id="edit-wrap">
         <div id="edit-gutter" aria-hidden="true"><div id="edit-gutter-inner"><div id="edit-line-numbers"></div></div></div>
         <div id="edit-code">
+          <div id="edit-marks" aria-hidden="true"></div>
           <div id="edit-highlight" aria-hidden="true"></div>
           <textarea id="edit-area" spellcheck="false" autocomplete="off"
                     placeholder="Paste the JSON code here (your code is not saved anywhere)"
@@ -81,7 +80,7 @@
     <div id="statusbar">
       <span id="status-left"></span>
       <div id="status-spacer"></div>
-      <span id="status-path" class="hint">⌘F Find</span>
+      <span id="status-path" class="hint">⌘F Search</span>
     </div>
   </div>
 
