@@ -29,10 +29,14 @@ Runs entirely in the browser; nothing you paste is sent anywhere.
 ## Run locally
 
 ```bash
-npx http-server -p 8080
+npx http-server -p 8080 -c-1
 ```
 
 Then open http://localhost:8080 in your browser.
+
+`-c-1` turns off caching. Without it `http-server` sends an hour of
+`max-age`, and a tab you leave open keeps running the build it first loaded —
+a reload will not pick up your edits.
 
 ## Chrome extension
 

@@ -595,3 +595,21 @@ test('42. loading unparseable text leaves the button reading Done', async ({ pag
   await expect(page.locator('#edit-area')).toBeVisible();
   await expect(page.locator('#btn-edit')).toHaveText('Done');
 });
+
+// The palette toggles the editor too, so the label has to follow that route.
+test('43. the palette Edit Source command also flips the label', async ({ page }) => {
+  await load(page);
+  await page.keyboard.press('Meta+k');
+  await page.locator('#palette-input').fill('edit source');
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('#edit-area')).toBeVisible();
+  await expect(page.locator('#btn-edit')).toHaveText('Done');
+  await expect(page.locator('#btn-edit')).toHaveAttribute('title', 'Finish editing');
+
+  await page.keyboard.press('Meta+k');
+  await page.locator('#palette-input').fill('edit source');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#btn-edit')).toHaveText('Edit');
+  await expect(page.locator('#btn-edit')).toHaveAttribute('title', 'Edit the source');
+});
