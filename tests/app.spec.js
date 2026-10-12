@@ -1,461 +1,334 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
 
-const SAMPLE_JSON = JSON.stringify({
-  name: "John",
+const SAMPLE = JSON.stringify({
+  name: 'John',
   age: 30,
   active: true,
   score: null,
   address: {
-    street: "123 Main St",
-    city: "Springfield",
-    geo: {
-      lat: 37.3861,
-      lng: -122.0839
-    }
+    street: '123 Main St',
+    city: 'Springfield',
+    geo: { lat: 37.3861, lng: -122.0839 }
   },
-  tags: ["admin", "user"]
+  tags: ['admin', 'user']
 });
 
-// ----------------------------------------------------------------
-// 1. Loads with Text tab active, placeholder visible
-// ----------------------------------------------------------------
-test('1. loads with Text tab active and placeholder visible', async ({ page }) => {
+/** Load a document the way the extension does, then wait for the tree. */
+async function load(page, text = SAMPLE) {
   await page.goto('/');
-  await expect(page.locator('#tab-text')).toHaveClass(/active/);
-  await expect(page.locator('#panel-text')).toHaveClass(/active/);
-  await expect(page.locator('#panel-viewer')).not.toHaveClass(/active/);
-  const placeholder = await page.locator('#json-input').getAttribute('placeholder');
-  expect(placeholder).toContain('Paste the JSON code here');
+  await page.evaluate((t) => window.jsontree.load(t), text);
+  await expect(page.locator('#tree-container .tree-row').first()).toBeVisible();
+}
+
+/** Toggle a container by its path, then wait for the slide to finish.
+ *  Mid-animation toggles are deliberately ignored by the app, so a test that
+ *  clicks twice in a row has to let the first one land. */
+async function toggle(page, path) {
+  await page.locator(`.tree-row[data-path="${path}"] .expander-box`).click();
+  await page.waitForFunction((p) => {
+    const row = document.querySelector(`.tree-row[data-path="${p}"]`);
+    const children = row && row.parentElement.querySelector(':scope > .tree-children');
+    return children && children.style.height === '';
+  }, path);
+}
+const expand = toggle;
+
+/** Put text into the source editor and let it validate. */
+async function type(page, text) {
+  await page.locator('#btn-edit').click();
+  await page.locator('#edit-area').fill(text);
+}
+
+// ----------------------------------------------------------------
+// Shell
+// ----------------------------------------------------------------
+test('1. opens on the empty state with the keyboard hint showing', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#app')).toHaveClass(/empty/);
+  await expect(page.locator('#empty-state')).toBeVisible();
+  await expect(page.locator('#tree-container .tree-row')).toHaveCount(0);
+  await expect(page.locator('#status-path')).toHaveText('⌘K Commands · ⌘F Find');
 });
 
-// ----------------------------------------------------------------
-// 2. Format: minified → 2-space-indented; key order preserved
-// ----------------------------------------------------------------
-test('2. Format produces 2-space-indented output with key order preserved', async ({ page }) => {
-  await page.goto('/');
-  const minified = '{"b":2,"a":1}';
-  await page.locator('#json-input').fill(minified);
-  await page.locator('#btn-format').click();
-  const val = await page.locator('#json-input').inputValue();
-  expect(val).toBe('{\n  "b": 2,\n  "a": 1\n}');
-});
+test('2. the status bar is the same height in every state', async ({ page }) => {
+  await load(page);
+  const bar = page.locator('#statusbar');
+  const resting = (await bar.boundingBox()).height;
 
-// ----------------------------------------------------------------
-// 3. Remove white space: pretty → minified
-// ----------------------------------------------------------------
-test('3. Remove white space produces minified output', async ({ page }) => {
-  await page.goto('/');
-  const pretty = '{\n  "name": "John",\n  "age": 30\n}';
-  await page.locator('#json-input').fill(pretty);
-  await page.locator('#btn-minify').click();
-  const val = await page.locator('#json-input').inputValue();
-  expect(val).toBe('{"name":"John","age":30}');
-});
+  await page.keyboard.press('Meta+f');
+  await expect(page.locator('#findbar')).toHaveClass(/open/);
+  expect((await bar.boundingBox()).height).toBe(resting);
 
-// ----------------------------------------------------------------
-// 4. Clear empties textarea
-// ----------------------------------------------------------------
-test('4. Clear empties the textarea', async ({ page }) => {
-  await page.goto('/');
-  await page.locator('#json-input').fill('{"x":1}');
-  await page.locator('#btn-clear').click();
-  const val = await page.locator('#json-input').inputValue();
-  expect(val).toBe('');
-});
-
-// ----------------------------------------------------------------
-// 5. Invalid JSON + Format → error dialog; OK dismisses
-// ----------------------------------------------------------------
-test('5. Format on invalid JSON shows error dialog and OK dismisses', async ({ page }) => {
-  await page.goto('/');
-  await page.locator('#json-input').fill('not json');
-  await page.locator('#btn-format').click();
-  await expect(page.locator('#modal-overlay')).not.toHaveClass(/hidden/);
-  await expect(page.locator('#modal-title')).toHaveText('JSON error');
-  await expect(page.locator('#modal-message')).toHaveText('Invalid JSON variable');
-  await page.locator('#modal-ok-btn').click();
-  await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
-});
-
-// ----------------------------------------------------------------
-// 6. Invalid JSON + click Viewer tab → dialog, stays on Text tab
-// ----------------------------------------------------------------
-test('6. Clicking Viewer tab with invalid JSON shows error and stays on Text tab', async ({ page }) => {
-  await page.goto('/');
-  await page.locator('#json-input').fill('invalid json here');
-  await page.locator('#tab-viewer').click();
-  await expect(page.locator('#modal-overlay')).not.toHaveClass(/hidden/);
-  await expect(page.locator('#modal-title')).toHaveText('JSON error');
-  // Close dialog
-  await page.locator('#modal-ok-btn').click();
-  // Still on Text tab
-  await expect(page.locator('#tab-text')).toHaveClass(/active/);
-  await expect(page.locator('#panel-text')).toHaveClass(/active/);
-});
-
-// ----------------------------------------------------------------
-// 7. Valid nested JSON → Viewer shows root JSON, first-level children,
-//    correct labels/quoting for string/number/boolean/null leaves
-// ----------------------------------------------------------------
-test('7. Valid JSON builds correct tree with proper labels', async ({ page }) => {
-  await page.goto('/');
-  await page.locator('#json-input').fill(SAMPLE_JSON);
-  await page.locator('#tab-viewer').click();
-  await expect(page.locator('#panel-viewer')).toHaveClass(/active/);
-
-  // Root node labelled JSON
-  const rootLabel = page.locator('.tree-label').first();
-  await expect(rootLabel).toHaveText('JSON');
-
-  // String leaf: name : "John"
-  const labels = page.locator('.tree-label');
-  const texts = await labels.allTextContents();
-  expect(texts).toContain('name : "John"');
-  expect(texts).toContain('age : 30');
-  expect(texts).toContain('active : true');
-  expect(texts).toContain('score : null');
-});
-
-// ----------------------------------------------------------------
-// 8. Expand/collapse via expander; deeper levels hidden until expanded
-//    (uses Playwright's built-in polling to tolerate the 250ms slide animation)
-// ----------------------------------------------------------------
-test('8. Expand and collapse via expander box', async ({ page }) => {
-  await page.goto('/');
-  await page.locator('#json-input').fill(SAMPLE_JSON);
-  await page.locator('#tab-viewer').click();
-
-  // "address" node at depth 1 — find its row
-  const addressLabel = page.locator('.tree-label', { hasText: /^address$/ });
-  await expect(addressLabel).toBeVisible();
-
-  // Its children (geo, street, city) should be hidden (collapsed by default at depth 1)
-  const geoLabel = page.locator('.tree-label', { hasText: /^geo$/ });
-  await expect(geoLabel).not.toBeVisible();
-
-  // Find the expander box next to "address"
-  const addressRow = page.locator('.tree-row', { has: page.locator('.tree-label', { hasText: /^address$/ }) });
-  const expander = addressRow.locator('.expander-box');
-  await expander.click();
-
-  // geo should become visible as animation reveals it (Playwright polls up to 5s)
-  await expect(geoLabel).toBeVisible();
-  // Let the expand animation finish — clicks during it are intentionally ignored
-  await page.waitForTimeout(400);
-
-  // Collapse again — polls until display:none is applied after animation ends (~250ms)
-  await expander.click();
-  await expect(geoLabel).not.toBeVisible({ timeout: 2000 });
-});
-
-// ----------------------------------------------------------------
-// 16. Animation cleanup: no leftover inline styles after completion;
-//     rapid double-toggle leaves tree in correct final state
-// ----------------------------------------------------------------
-test('16. Expand animation leaves no inline styles; rapid-toggle resolves cleanly', async ({ page }) => {
-  await page.goto('/');
-  await page.locator('#json-input').fill(SAMPLE_JSON);
-  await page.locator('#tab-viewer').click();
-
-  const addressRow = page.locator('.tree-row', { has: page.locator('.tree-label', { hasText: /^address$/ }) });
-  const expander = addressRow.locator('.expander-box');
-  const geoLabel = page.locator('.tree-label', { hasText: /^geo$/ });
-
-  // --- Part a: expand, let animation finish, verify clean DOM ---
-  await expander.click();
-  await expect(geoLabel).toBeVisible();
-  // Wait comfortably past the 250ms animation duration
-  await page.waitForTimeout(400);
-
-  // No leftover inline height or overflow on the children container
-  const inlineStylesAfterExpand = await page.evaluate(() => {
-    const label = [...document.querySelectorAll('.tree-label')].find(l => l.textContent === 'address');
-    if (!label) return 'not-found';
-    const childrenEl = label.closest('.tree-node').querySelector(':scope > .tree-children');
-    if (!childrenEl) return 'no-children';
-    return (childrenEl.style.height || '') + '|' + (childrenEl.style.overflow || '');
-  });
-  expect(inlineStylesAfterExpand).toBe('|');
-
-  // No temporary animation wrapper div should remain — first child must be .tree-node
-  const hasSpuriousWrapper = await page.evaluate(() => {
-    const label = [...document.querySelectorAll('.tree-label')].find(l => l.textContent === 'address');
-    if (!label) return false;
-    const childrenEl = label.closest('.tree-node').querySelector(':scope > .tree-children');
-    if (!childrenEl || !childrenEl.firstChild) return false;
-    return !childrenEl.firstChild.classList.contains('tree-node');
-  });
-  expect(hasSpuriousWrapper).toBe(false);
-
-  // --- Part b: rapid double-click — the second click lands mid-animation
-  // and must be IGNORED, so the collapse simply runs to completion ---
-  // Click 1: start collapse animation
-  await expander.click();
-  // Click 2: immediately, before 250ms — ignored while animating
-  await expander.click();
-
-  // Wait for the animation to complete
-  await page.waitForTimeout(400);
-
-  // Must be fully collapsed with no leftover styles
-  await expect(geoLabel).not.toBeVisible();
-
-  // A click after the animation finished works normally again
-  await expander.click();
-  await page.waitForTimeout(400);
-  await expect(geoLabel).toBeVisible();
-
-  const inlineStylesAfterRapid = await page.evaluate(() => {
-    const label = [...document.querySelectorAll('.tree-label')].find(l => l.textContent === 'address');
-    if (!label) return 'not-found';
-    const childrenEl = label.closest('.tree-node').querySelector(':scope > .tree-children');
-    if (!childrenEl) return 'no-children';
-    return (childrenEl.style.height || '') + '|' + (childrenEl.style.overflow || '');
-  });
-  expect(inlineStylesAfterRapid).toBe('|');
-});
-
-// ----------------------------------------------------------------
-// 9. Selecting an object node updates grid rows
-// ----------------------------------------------------------------
-test('9. Selecting an object node updates the property grid', async ({ page }) => {
-  await page.goto('/');
-  await page.locator('#json-input').fill(SAMPLE_JSON);
-  await page.locator('#tab-viewer').click();
-
-  // Expand address first
-  const addressRow = page.locator('.tree-row', { has: page.locator('.tree-label', { hasText: /^address$/ }) });
-  await addressRow.locator('.expander-box').click();
-
-  // Click address row to select it
-  await addressRow.click();
-
-  // Grid should show address properties: street, city, geo
-  const gridNames = page.locator('.grid-cell-name');
-  const nameTexts = await gridNames.allTextContents();
-  expect(nameTexts).toContain('street');
-  expect(nameTexts).toContain('city');
-  expect(nameTexts).toContain('geo');
-
-  // Nested objects show "..."
-  const gridValues = page.locator('.grid-cell-value');
-  const valTexts = await gridValues.allTextContents();
-  expect(valTexts).toContain('...');
-  expect(valTexts).toContain('"123 Main St"');
-});
-
-// ----------------------------------------------------------------
-// 10. Selecting a leaf shows parent's properties in grid
-// ----------------------------------------------------------------
-test('10. Selecting a leaf node shows parent properties in grid', async ({ page }) => {
-  await page.goto('/');
-  await page.locator('#json-input').fill(SAMPLE_JSON);
-  await page.locator('#tab-viewer').click();
-
-  // "name" leaf at depth 1 — click it
-  const nameRow = page.locator('.tree-row', { has: page.locator('.tree-label', { hasText: /^name : "John"$/ }) });
-  await nameRow.click();
-
-  // Grid should show root object properties (parent of name is root)
-  const gridNames = page.locator('.grid-cell-name');
-  const nameTexts = await gridNames.allTextContents();
-  expect(nameTexts).toContain('name');
-  expect(nameTexts).toContain('age');
-  expect(nameTexts).toContain('active');
-  expect(nameTexts).toContain('score');
-});
-
-// ----------------------------------------------------------------
-// 11. Grid header click sorts asc/desc
-// ----------------------------------------------------------------
-test('11. Grid header click toggles sort asc/desc', async ({ page }) => {
-  await page.goto('/');
-  await page.locator('#json-input').fill(SAMPLE_JSON);
-  await page.locator('#tab-viewer').click();
-
-  // Root selected, so grid shows top-level keys
-  // Default sort: name ascending — first item should be "active" (a comes before n)
-  const firstCell = page.locator('.grid-cell-name').first();
-  await expect(firstCell).toHaveText('active');
-
-  // Sort arrow for Name should be visible (ascending ▲)
-  await expect(page.locator('#sort-arrow-name')).toBeVisible();
-  await expect(page.locator('#sort-arrow-name')).toHaveText('▲');
-
-  // Click Name header to sort desc
-  await page.locator('#grid-col-name').click();
-  await expect(page.locator('#sort-arrow-name')).toHaveText('▼');
-  const firstCellDesc = page.locator('.grid-cell-name').first();
-  await expect(firstCellDesc).toHaveText('tags');
-
-  // Click Value header
-  await page.locator('#grid-col-value').click();
-  await expect(page.locator('#sort-arrow-value')).toBeVisible();
-  await expect(page.locator('#sort-arrow-name')).not.toBeVisible();
-});
-
-// ----------------------------------------------------------------
-// 12. Search finds deep key, expands ancestors, Next/Prev cycles
-// ----------------------------------------------------------------
-test('12. Search finds deep key, expands ancestors, Next/Prev cycle with wrap', async ({ page }) => {
-  await page.goto('/');
-  await page.locator('#json-input').fill(SAMPLE_JSON);
-  await page.locator('#tab-viewer').click();
-
-  // Search for "lat"
-  await page.locator('#search-input').fill('lat');
-  await page.locator('#btn-search-go').click();
-
-  // lat row should be visible (ancestors expanded)
-  const latLabel = page.locator('.tree-label', { hasText: /^lat :/ });
-  await expect(latLabel).toBeVisible();
-
-  // lat row should be selected
-  const latRow = page.locator('.tree-row', { has: latLabel });
-  await expect(latRow).toHaveClass(/selected/);
-
-  // Search for "a" — multiple matches
-  await page.locator('#search-input').fill('a');
-  await page.locator('#btn-search-go').click();
-
-  // Next cycles forward
-  const firstSelected = await page.locator('.tree-row.selected').first();
-  await page.locator('#btn-search-next').click();
-  // Some other row should be selected after next
-
-  // Previous goes back — eventually wraps
-  await page.locator('#btn-search-prev').click();
-  // Should be back to first match without errors
-  const selectedRows = page.locator('.tree-row.selected');
-  await expect(selectedRows).toHaveCount(1);
-});
-
-// ----------------------------------------------------------------
-// 13. Copy button: clipboard content equals textarea
-// ----------------------------------------------------------------
-test('13. Copy writes textarea content to clipboard', async ({ browser }) => {
-  const context = await browser.newContext({
-    permissions: ['clipboard-read', 'clipboard-write'],
-  });
-  const page = await context.newPage();
-  await page.goto('/');
-
-  const content = '{"test":123}';
-  await page.locator('#json-input').fill(content);
-  await page.locator('#btn-copy').click();
-
-  const clipText = await page.evaluate(() => navigator.clipboard.readText());
-  expect(clipText).toBe(content);
-
-  // Status bar shows "Copied"
-  await expect(page.locator('#status-text')).toHaveText('Copied');
-
-  await context.close();
-});
-
-// ----------------------------------------------------------------
-// 14. About dialog opens and closes
-// ----------------------------------------------------------------
-test('14. About dialog opens and closes with OK, X, and Escape', async ({ page }) => {
-  await page.goto('/');
-
-  // Open
-  await page.locator('#btn-about').click();
-  await expect(page.locator('#modal-overlay')).not.toHaveClass(/hidden/);
-  await expect(page.locator('#modal-title')).toHaveText('About');
-  await expect(page.locator('#modal-message')).toContainText('jsontree');
-
-  // Close with OK
-  await page.locator('#modal-ok-btn').click();
-  await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
-
-  // Open again, close with X
-  await page.locator('#btn-about').click();
-  await page.locator('#modal-close-btn').click();
-  await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
-
-  // Open again, close with Escape
-  await page.locator('#btn-about').click();
   await page.keyboard.press('Escape');
-  await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
+  await page.locator('#btn-edit').click();
+  await expect(page.locator('#edit-area')).toBeVisible();
+  expect((await bar.boundingBox()).height).toBe(resting);
+
+  // The toolbar must not move either.
+  await expect(page.locator('#toolbar')).toHaveCSS('height', '38px');
 });
 
 // ----------------------------------------------------------------
-// 15. Empty textarea + Viewer tab → no error, empty tree
+// Tree
 // ----------------------------------------------------------------
-test('15. Empty textarea with Viewer tab shows no error and empty tree', async ({ page }) => {
-  await page.goto('/');
-  // Ensure textarea is empty
-  await expect(page.locator('#json-input')).toHaveValue('');
+test('3. builds the tree with the expected labels and quoting', async ({ page }) => {
+  await load(page);
+  const labels = page.locator('#tree-container .tree-label');
+  await expect(labels.nth(0)).toHaveText('JSON');
+  await expect(labels.nth(1)).toHaveText('name : "John"');
+  await expect(labels.nth(2)).toHaveText('age : 30');
+  await expect(labels.nth(3)).toHaveText('active : true');
+  await expect(labels.nth(4)).toHaveText('score : null');
+  await expect(labels.nth(5)).toHaveText('address');
+});
 
-  await page.locator('#tab-viewer').click();
+test('4. expander toggles a subtree', async ({ page }) => {
+  await load(page);
+  const city = page.locator('.tree-row[data-path="address.city"]');
+  await expect(city).toBeHidden();
 
-  // No error dialog
-  await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
+  await expand(page, 'address');
+  await expect(city).toBeVisible();
+  await expect(city).toContainText('city : "Springfield"');
 
-  // Viewer panel active
-  await expect(page.locator('#panel-viewer')).toHaveClass(/active/);
+  await toggle(page, 'address');
+  await expect(city).toBeHidden();
+});
 
-  // Empty tree
-  const treeRows = page.locator('#tree-container .tree-row');
-  await expect(treeRows).toHaveCount(0);
+test('5. connector columns stay in layout at every depth', async ({ page }) => {
+  await load(page);
+  const rows = page.locator('#tree-container .tree-row');
+  // Root: one column, no elbow. Depth 1: two columns, one elbow.
+  await expect(rows.nth(0).locator('.tc')).toHaveCount(1);
+  await expect(rows.nth(0).locator('.tc-elbow')).toHaveCount(0);
+  await expect(rows.nth(1).locator('.tc')).toHaveCount(2);
+  await expect(rows.nth(1).locator('.tc-elbow')).toHaveCount(1);
+});
+
+test('6. selecting a row shows its path, and the path copies on click', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await load(page);
+  await expand(page, 'address');
+
+  await page.locator('.tree-row[data-path="address.city"]').click();
+  await expect(page.locator('#status-path')).toHaveText('address.city');
+
+  await page.locator('#status-path').click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('address.city');
+});
+
+test('7. array children are addressed with bracket notation', async ({ page }) => {
+  await load(page);
+  await expand(page, 'tags');
+  await page.locator('.tree-row[data-path="tags[0]"]').click();
+  await expect(page.locator('#status-path')).toHaveText('tags[0]');
+});
+
+test('8. arrow keys walk the tree and expand containers', async ({ page }) => {
+  await load(page);
+
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('.tree-row.selected .tree-label')).toHaveText('JSON');
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('.tree-row.selected .tree-label')).toHaveText('name : "John"');
+
+  // Walk to the collapsed `address` container and open it with ArrowRight.
+  for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowDown');
+  await expect(page.locator('.tree-row.selected .tree-label')).toHaveText('address');
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('.tree-row[data-path="address.city"]')).toBeVisible();
 });
 
 // ----------------------------------------------------------------
-// 17. Tree connector line structure: tee/corner/pass-through classes
-//     (a) root row has tc-root, no tee/corner
-//     (b) last root child has tc-corner; non-last has tc-tee
-//     (c) pass-through column for a LAST ancestor has no has-line;
-//         pass-through column for a NON-LAST ancestor has has-line
+// Find
 // ----------------------------------------------------------------
-test('17. Tree connector line structure is correct', async ({ page }) => {
+test('9. find highlights matches, counts them, and reveals buried nodes', async ({ page }) => {
+  await load(page);
+  await page.keyboard.press('Meta+f');
+  await expect(page.locator('#findbar')).toHaveClass(/open/);
+
+  await page.locator('#find-input').fill('lat');
+  // `lat` is three levels down, inside a collapsed subtree.
+  await expect(page.locator('#find-count')).toHaveText('1 of 1');
+  await expect(page.locator('.tree-row.selected .tree-label')).toContainText('lat : 37.3861');
+  await expect(page.locator('mark.find-match.current')).toHaveText('lat');
+  await expect(page.locator('#status-path')).toHaveText('address.geo.lat');
+});
+
+test('10. find cycles through matches and wraps around', async ({ page }) => {
+  await load(page);
+  await page.keyboard.press('Meta+f');
+  await page.locator('#find-input').fill('a');
+
+  const total = parseInt((await page.locator('#find-count').textContent()).split(' of ')[1], 10);
+  expect(total).toBeGreaterThan(2);
+  await expect(page.locator('#find-count')).toHaveText('1 of ' + total);
+
+  await page.locator('#find-next').click();
+  await expect(page.locator('#find-count')).toHaveText('2 of ' + total);
+  await page.locator('#find-prev').click();
+  await expect(page.locator('#find-count')).toHaveText('1 of ' + total);
+  // Wrap backwards off the first match.
+  await page.locator('#find-prev').click();
+  await expect(page.locator('#find-count')).toHaveText(total + ' of ' + total);
+});
+
+test('11. Escape closes find and removes every highlight', async ({ page }) => {
+  await load(page);
+  await page.keyboard.press('Meta+f');
+  await page.locator('#find-input').fill('name');
+  await expect(page.locator('mark.find-match').first()).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#findbar')).not.toHaveClass(/open/);
+  await expect(page.locator('mark.find-match')).toHaveCount(0);
+  // The label text survives the highlight round-trip intact.
+  await expect(page.locator('#tree-container .tree-label').nth(1)).toHaveText('name : "John"');
+});
+
+// ----------------------------------------------------------------
+// Command palette
+// ----------------------------------------------------------------
+test('12. the palette opens on ⌘K and filters fuzzily', async ({ page }) => {
+  await load(page);
+  await page.keyboard.press('Meta+k');
+  await expect(page.locator('#palette-overlay')).toHaveClass(/open/);
+
+  await page.locator('#palette-input').fill('coll');
+  await expect(page.locator('.palette-item').first()).toContainText('Collapse All');
+  await expect(page.locator('.palette-item', { hasText: 'Format' })).toHaveCount(0);
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#palette-overlay')).not.toHaveClass(/open/);
+});
+
+test('13. a palette command runs against the document', async ({ page }) => {
+  await load(page);
+  await expand(page, 'address');
+  await expect(page.locator('.tree-row[data-path="address.city"]')).toBeVisible();
+
+  await page.keyboard.press('Meta+k');
+  await page.locator('#palette-input').fill('collapse');
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('#palette-overlay')).not.toHaveClass(/open/);
+  await expect(page.locator('.tree-row[data-path="address.city"]')).toBeHidden();
+});
+
+// ----------------------------------------------------------------
+// Toolbar actions
+// ----------------------------------------------------------------
+test('14. Copy puts the pretty-printed document on the clipboard', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await load(page, '{"b":2,"a":1}');
+  await page.locator('#btn-copy').click();
+  const text = await page.evaluate(() => navigator.clipboard.readText());
+  expect(text).toBe('{\n  "b": 2,\n  "a": 1\n}');   // key order preserved
+});
+
+test('15. Minify copies the document without whitespace', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await load(page, '{\n  "name": "John",\n  "age": 30\n}');
+  await page.locator('#btn-minify').click();
+  expect(await page.evaluate(() => navigator.clipboard.readText()))
+    .toBe('{"name":"John","age":30}');
+  await expect(page.locator('#status-left')).toHaveText('Copied minified JSON');
+});
+
+test('16. Copy Selection copies just the selected subtree', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await load(page);
+  await page.locator('.tree-row[data-path="address"]').click();
+  await page.keyboard.press('Meta+k');
+  await page.locator('#palette-input').fill('copy selection');
+  await page.keyboard.press('Enter');
+
+  const text = await page.evaluate(() => navigator.clipboard.readText());
+  expect(JSON.parse(text).city).toBe('Springfield');
+});
+
+test('17. Clear empties the document and returns to the empty state', async ({ page }) => {
+  await load(page);
+  await page.keyboard.press('Meta+k');
+  await page.locator('#palette-input').fill('clear');
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('#app')).toHaveClass(/empty/);
+  await expect(page.locator('#tree-container .tree-row')).toHaveCount(0);
+  await expect(page.locator('#empty-state')).toBeVisible();
+});
+
+// ----------------------------------------------------------------
+// Source editor and errors
+// ----------------------------------------------------------------
+test('18. editing the source rebuilds the tree', async ({ page }) => {
+  await load(page);
+  await type(page, '{"hello":"world"}');
+  await page.locator('#btn-edit').click();   // leave the editor
+
+  await expect(page.locator('#edit-area')).toBeHidden();
+  await expect(page.locator('#tree-container .tree-label').nth(1)).toHaveText('hello : "world"');
+});
+
+test('19. Format re-indents the source in place', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#json-input').fill(SAMPLE_JSON);
-  await page.locator('#tab-viewer').click();
+  await type(page, '{"b":2,"a":1}');
+  await page.locator('#btn-format').click();
+  await expect(page.locator('#edit-area')).toHaveValue('{\n  "b": 2,\n  "a": 1\n}');
+});
 
-  // (a) Root row: exactly one .tc column (the root column), class tc-root, no tee/corner
-  const rootRow = page.locator('.tree-row').first();
-  const rootTcCols = rootRow.locator('.tc');
-  await expect(rootTcCols).toHaveCount(1);
-  await expect(rootTcCols.first()).toHaveClass(/tc-root/);
-  const rootElbowClass = await rootTcCols.first().getAttribute('class');
-  expect(rootElbowClass).not.toMatch(/tc-tee|tc-corner/);
+test('20. invalid JSON reports a real line and column, with no modal', async ({ page }) => {
+  await page.goto('/');
+  await type(page, '{\n  "a": 1\n  "b": 2\n}');
 
-  // (b) SAMPLE_JSON root children in order: name, age, active, score, address, tags
-  //     Last root child = "tags" → tc-corner
-  //     "name" (first, non-last) → tc-tee
-  const tagsRow = page.locator('.tree-row', { has: page.locator('.tree-label', { hasText: /^tags$/ }) });
-  const tagsElbow = tagsRow.locator('.tc-elbow');
-  await expect(tagsElbow).toHaveClass(/tc-corner/);
+  await expect(page.locator('#status-left')).toHaveClass(/error/);
+  await expect(page.locator('#status-left')).toHaveText('Invalid JSON — line 3, column 3: expected "," or "}"');
+  await expect(page.locator('.edit-error-marker')).toHaveCount(1);
+  // Nothing modal: the document stays reachable behind the message.
+  await expect(page.locator('#palette-overlay')).not.toHaveClass(/open/);
+});
 
-  const nameRow = page.locator('.tree-row', { has: page.locator('.tree-label', { hasText: /^name : "John"$/ }) });
-  const nameElbow = nameRow.locator('.tc-elbow');
-  await expect(nameElbow).toHaveClass(/tc-tee/);
+// Truncated JSON is the case a message-scraping parser gets wrong: V8 reports
+// "Unexpected end of JSON input" with no position at all.
+test('21. truncated JSON still reports where the input ran out', async ({ page }) => {
+  await page.goto('/');
+  await type(page, '[1,2,');
+  await expect(page.locator('#status-left'))
+    .toHaveText('Invalid JSON — line 1, column 5: unexpected end of input');
+});
 
-  // (c) Expand "tags" (LAST root child) and check its children's depth-1 pass-through column
-  //     Tags children have ancestorLineMask[1] = false (tags is last) → no has-line on col index 1
-  const tagsExpander = tagsRow.locator('.expander-box');
-  await tagsExpander.click();
-  const adminLabel = page.locator('.tree-label', { hasText: /^0 : "admin"$/ });
-  await expect(adminLabel).toBeVisible();
+test('22. the editor refuses to close while the JSON is invalid', async ({ page }) => {
+  await load(page);
+  await type(page, '{"a":');
+  await page.locator('#btn-edit').click();
 
-  const adminRow = page.locator('.tree-row', { has: adminLabel });
-  // depth=2 → columns: [tc-pass col0, tc-pass col1, tc-elbow]
-  // col1 (nth(1)) corresponds to the depth-1 ancestor = tags (LAST → no line)
-  const adminPassCol1 = adminRow.locator('.tc').nth(1);
-  const adminPassCol1Class = await adminPassCol1.getAttribute('class');
-  expect(adminPassCol1Class).not.toContain('has-line');
+  await expect(page.locator('#edit-area')).toBeVisible();      // still editing
+  await expect(page.locator('#status-left')).toHaveClass(/error/);
+});
 
-  // Expand "address" (NON-LAST root child) and check its children's depth-1 pass-through column
-  //     Address children have ancestorLineMask[1] = true (address is non-last) → has-line on col index 1
-  const addressRow = page.locator('.tree-row', { has: page.locator('.tree-label', { hasText: /^address$/ }) });
-  await addressRow.locator('.expander-box').click();
-  const streetLabel = page.locator('.tree-label', { hasText: /^street :/ });
-  await expect(streetLabel).toBeVisible();
+test('23. empty input is valid, not an error', async ({ page }) => {
+  await load(page);
+  await type(page, '');
+  await expect(page.locator('#status-left')).not.toHaveClass(/error/);
+  await page.locator('#btn-edit').click();
+  await expect(page.locator('#app')).toHaveClass(/empty/);
+});
 
-  const streetRow = page.locator('.tree-row', { has: streetLabel });
-  // col1 (nth(1)) = depth-1 ancestor = address (NON-LAST → has line)
-  const streetPassCol1 = streetRow.locator('.tc').nth(1);
-  await expect(streetPassCol1).toHaveClass(/has-line/);
+// ----------------------------------------------------------------
+// Appearance
+// ----------------------------------------------------------------
+test('24. an explicit theme overrides the OS preference in both directions', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await load(page);
+  const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  const lightBg = await bg();
+
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+  const forcedDark = await bg();
+  expect(forcedDark).not.toBe(lightBg);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+  expect(await bg()).toBe(lightBg);
 });

@@ -1,8 +1,13 @@
 /* ============================================================
-   jsontree — "Sonoma" theme
-   A modern macOS system-app skin: unified toolbar, segmented
-   tab control, source-list sidebar, inspector table, alert sheet.
-   Light + dark via prefers-color-scheme. CSS only — DOM untouched.
+   jsontree — a native-feeling macOS JSON viewer.
+
+   Structure: one unified toolbar, a summoned find bar, a single
+   content area (tree / empty state / source editor) and one
+   status bar whose height never changes between states.
+
+   The tree itself is deliberately unchanged from the previous
+   release — same 18px column grid, same disclosure triangles,
+   same source-list selection. Everything around it is new.
    ============================================================ */
 
 *, *::before, *::after {
@@ -11,14 +16,30 @@
   padding: 0;
 }
 
+/* ============================================================
+   Tokens
+
+   The complete light palette lives on bare :root. Dark is applied
+   twice — once following the OS preference (unless an explicit
+   light override is set) and once for an explicit dark override —
+   so a host page can force either theme with
+   documentElement.dataset.theme regardless of the OS setting.
+   That matters for the Chrome extension, which renders inside
+   pages whose appearance we do not control.
+
+   Every component colour below traces back to a token here. A
+   colour defined only inside a media query renders one theme's
+   text on the other theme's ground.
+   ============================================================ */
 :root {
   --accent: #0A84FF;
+  --accent-rgb: 10, 132, 255;
   --accent-pressed: #0a6fd6;
 
-  --bg-window: #ececee;     /* app chrome / letterboxing around the pill tabs */
-  --bg-sidebar: #f5f5f7;    /* tree source-list tint */
-  --bg-content: #ffffff;    /* textarea / grid content */
-  --bg-elevated: #ffffff;   /* raised surfaces: active tab pill, modal */
+  --bg-window: #ececee;     /* chrome behind the app */
+  --bg-sidebar: #f5f5f7;    /* tree source-list tint, find bar, status bar */
+  --bg-content: #ffffff;    /* editor surface */
+  --bg-elevated: #ffffff;   /* raised surfaces: command palette */
   --bg-toolbar: rgba(246, 246, 248, 0.82);
 
   --text-primary: #1d1d1f;
@@ -28,11 +49,9 @@
 
   --hairline: rgba(0, 0, 0, 0.09);
   --hairline-strong: rgba(0, 0, 0, 0.14);
-  --row-alt: rgba(0, 0, 0, 0.025);
   --control-fill: rgba(0, 0, 0, 0.055);
   --control-fill-hover: rgba(0, 0, 0, 0.075);
   --control-fill-active: rgba(0, 0, 0, 0.11);
-  --track-fill: rgba(0, 0, 0, 0.065);
   --connector: rgba(0, 0, 0, 0.1);
 
   --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.08), 0 1px 1px rgba(0, 0, 0, 0.05);
@@ -47,39 +66,48 @@
   --ok-boolean: #9a6b00;
   --ok-null: #8e8e93;
 
+  --mark-bg: rgba(255, 204, 0, 0.45);
+  --mark-current-bg: rgba(255, 149, 0, 0.75);
+  --scrim: rgba(0, 0, 0, 0.22);
+  /* The accent is the same blue in both themes, so these "on accent"
+     tones need no dark redefinition — but they stay tokens, not
+     literals, so every component colour traces back to :root. */
+  --on-accent-dim: rgba(255, 255, 255, 0.75);
+  --on-accent-fill: rgba(255, 255, 255, 0.22);
+  --on-accent-icon: rgba(255, 255, 255, 0.92);
+  --on-accent-guide: rgba(255, 255, 255, 0.35);
+
   --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Mono", Consolas, monospace;
+
+  color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --accent: #0A84FF;
+  :root:not([data-theme="light"]) {
     --accent-pressed: #3aa0ff;
-
+  
     --bg-window: #242426;
     --bg-sidebar: #1e1e20;
     --bg-content: #1e1e1e;
     --bg-elevated: #323234;
     --bg-toolbar: rgba(40, 40, 43, 0.78);
-
+  
     --text-primary: #f2f2f4;
     --text-secondary: #a1a1a6;
     --text-tertiary: #86868b;
-    --text-on-accent: #ffffff;
-
+  
     --hairline: rgba(255, 255, 255, 0.09);
     --hairline-strong: rgba(255, 255, 255, 0.14);
-    --row-alt: rgba(255, 255, 255, 0.035);
     --control-fill: rgba(255, 255, 255, 0.07);
     --control-fill-hover: rgba(255, 255, 255, 0.1);
     --control-fill-active: rgba(255, 255, 255, 0.15);
-    --track-fill: rgba(0, 0, 0, 0.25);
     --connector: rgba(255, 255, 255, 0.12);
-
+  
     --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 1px rgba(0, 0, 0, 0.3);
     --shadow-sheet: 0 24px 60px rgba(0, 0, 0, 0.55), 0 4px 14px rgba(0, 0, 0, 0.35);
     --focus-ring: rgba(58, 160, 255, 0.45);
-
+  
     --danger: #ff453a;
     --ok-object: #b295e8;
     --ok-array: #63d68a;
@@ -87,9 +115,55 @@
     --ok-number: #6cb4ff;
     --ok-boolean: #f0c04b;
     --ok-null: #98989d;
+  
+    --mark-bg: rgba(255, 214, 10, 0.35);
+    --mark-current-bg: rgba(255, 159, 10, 0.6);
+  
+    color-scheme: dark;
   }
 }
 
+:root[data-theme="dark"] {
+  --accent-pressed: #3aa0ff;
+
+  --bg-window: #242426;
+  --bg-sidebar: #1e1e20;
+  --bg-content: #1e1e1e;
+  --bg-elevated: #323234;
+  --bg-toolbar: rgba(40, 40, 43, 0.78);
+
+  --text-primary: #f2f2f4;
+  --text-secondary: #a1a1a6;
+  --text-tertiary: #86868b;
+
+  --hairline: rgba(255, 255, 255, 0.09);
+  --hairline-strong: rgba(255, 255, 255, 0.14);
+  --control-fill: rgba(255, 255, 255, 0.07);
+  --control-fill-hover: rgba(255, 255, 255, 0.1);
+  --control-fill-active: rgba(255, 255, 255, 0.15);
+  --connector: rgba(255, 255, 255, 0.12);
+
+  --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 1px rgba(0, 0, 0, 0.3);
+  --shadow-sheet: 0 24px 60px rgba(0, 0, 0, 0.55), 0 4px 14px rgba(0, 0, 0, 0.35);
+  --focus-ring: rgba(58, 160, 255, 0.45);
+
+  --danger: #ff453a;
+  --ok-object: #b295e8;
+  --ok-array: #63d68a;
+  --ok-string: #ff8a70;
+  --ok-number: #6cb4ff;
+  --ok-boolean: #f0c04b;
+  --ok-null: #98989d;
+
+  --mark-bg: rgba(255, 214, 10, 0.35);
+  --mark-current-bg: rgba(255, 159, 10, 0.6);
+
+  color-scheme: dark;
+}
+
+/* ============================================================
+   Shell
+   ============================================================ */
 html, body {
   width: 100%;
   height: 100%;
@@ -101,16 +175,9 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
-::selection {
-  background: var(--accent);
-  color: var(--text-on-accent);
-}
+::selection { background: var(--accent); color: var(--text-on-accent); }
 
-/* Thin overlay-style scrollbars */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--hairline-strong) transparent;
-}
+* { scrollbar-width: thin; scrollbar-color: var(--hairline-strong) transparent; }
 *::-webkit-scrollbar { width: 10px; height: 10px; }
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb {
@@ -119,20 +186,16 @@ html, body {
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-*::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.28); background-clip: padding-box; }
-@media (prefers-color-scheme: dark) {
-  *::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); background-clip: padding-box; }
-}
 
-button, input, textarea {
-  font-family: inherit;
-}
-
+button, input, textarea { font-family: inherit; }
 button {
   -webkit-appearance: none;
   appearance: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
 }
-
 :focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--focus-ring);
@@ -144,140 +207,45 @@ button {
   flex-direction: column;
   width: 100%;
   height: 100%;
-  background: var(--bg-window);
+  background: var(--bg-sidebar);
 }
 
 /* ============================================================
-   Tab strip — macOS segmented control, centered
+   Toolbar
    ============================================================ */
-#tab-strip {
-  position: relative;
-  display: inline-flex;
-  align-self: center;
-  align-items: stretch;
-  height: 24px;
-  gap: 2px;
-  margin: 8px auto;
-  padding: 2px;
-  background: var(--track-fill);
-  border-radius: 7px;
-  flex-shrink: 0;
-  z-index: 1;
-}
-
-/* Extend the pill's surrounding band edge-to-edge so the segmented
-   control reads as sitting in real unified-toolbar chrome, not
-   floating in empty space. -100vw is clipped by body's overflow:hidden. */
-#tab-strip::before {
-  content: '';
-  position: absolute;
-  top: -8px;
-  bottom: -8px;
-  left: -100vw;
-  right: -100vw;
-  background: var(--bg-toolbar);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  backdrop-filter: blur(20px) saturate(180%);
-  border-bottom: 1px solid var(--hairline);
-  z-index: -1;
-}
-
-.tab {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 16px;
-  min-width: 72px;
-  border-radius: 5px;
-  font-weight: 500;
-  font-size: 12px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  user-select: none;
-  transition: color 0.12s ease;
-}
-
-.tab:hover {
-  color: var(--text-primary);
-}
-
-.tab.active {
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-  font-weight: 600;
-  box-shadow: var(--shadow-elevated);
-}
-
-/* ============================================================
-   Panels
-   ============================================================ */
-#panels {
-  flex: 1;
-  overflow: hidden;
-  position: relative;
-}
-
-.panel {
-  display: none;
-  flex-direction: column;
-  width: 100%;
-  height: 100%;
-  position: absolute;
-  top: 0; left: 0;
-  background: var(--bg-content);
-}
-
-.panel.active {
-  display: flex;
-}
-
-/* ============================================================
-   Toolbar (shared) — unified translucent toolbar
-   ============================================================ */
-.toolbar {
+#toolbar {
   display: flex;
   align-items: center;
   height: 38px;
+  flex-shrink: 0;
   background: var(--bg-toolbar);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   backdrop-filter: blur(20px) saturate(180%);
   border-bottom: 1px solid var(--hairline);
   padding: 0 8px;
+  gap: 2px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 4px;
   flex-shrink: 0;
-  gap: 2px;
 }
 
-.toolbar-left {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  gap: 2px;
+.brand-mark {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--accent);
+  letter-spacing: -0.5px;
 }
 
-.toolbar-right {
-  display: flex;
-  align-items: center;
-}
-
-.tb-btn {
+.brand-name {
   font-size: 12.5px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-primary);
-  background: transparent;
-  border: none;
-  padding: 5px 10px;
-  cursor: pointer;
-  border-radius: 6px;
-  white-space: nowrap;
-  transition: background-color 0.1s ease;
-}
-
-.tb-btn:hover {
-  background: var(--control-fill);
-}
-
-.tb-btn:active {
-  background: var(--control-fill-active);
 }
 
 .tb-sep {
@@ -289,265 +257,141 @@ button {
   flex-shrink: 0;
 }
 
-.tb-label {
-  padding: 0 6px 0 2px;
-  color: var(--text-tertiary);
-  font-size: 11.5px;
-  font-weight: 500;
-}
-
-/* ============================================================
-   Text panel: textarea + statusbar
-   ============================================================ */
-#text-toolbar {
-  display: flex;
-  align-items: center;
-}
-
-#json-input {
-  flex: 1;
-  width: 100%;
-  resize: none;
-  font-family: var(--font-mono);
+.tb-btn {
   font-size: 12.5px;
-  line-height: 1.6;
-  background: var(--bg-content);
-  border: none;
-  outline: none;
-  padding: 14px 16px;
+  font-weight: 500;
   color: var(--text-primary);
+  padding: 5px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  transition: background-color 0.1s ease;
 }
 
-#json-input::placeholder {
-  color: var(--text-tertiary);
-}
+.tb-btn:hover { background: var(--control-fill); }
+.tb-btn:active { background: var(--control-fill-active); }
+.tb-btn.on { background: var(--accent); color: var(--text-on-accent); }
 
-#status-bar {
-  height: 24px;
-  background: var(--bg-sidebar);
-  border-top: 1px solid var(--hairline);
+.tb-spacer { flex: 1; }
+
+.tb-icon-btn {
   display: flex;
   align-items: center;
-  padding: 0 12px;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
   flex-shrink: 0;
-  font-size: 11.5px;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+}
+
+.tb-icon-btn:hover { background: var(--control-fill); color: var(--text-primary); }
+.tb-icon-btn.on { background: var(--accent); color: var(--text-on-accent); }
+.tb-icon-btn svg { width: 14px; height: 14px; display: block; }
+
+/* ============================================================
+   Find bar — zero height when closed, so opening it never
+   resizes the toolbar or the status bar
+   ============================================================ */
+#findbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid transparent;
+  padding: 0 12px;
+  transition: height 0.16s cubic-bezier(.3, .9, .4, 1);
+}
+
+#findbar.open {
+  height: 34px;
+  border-bottom-color: var(--hairline);
+}
+
+#findbar > svg {
+  width: 13px;
+  height: 13px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+#find-input {
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 80px;
+  max-width: 320px;
+}
+
+#find-input::placeholder { color: var(--text-tertiary); }
+
+#find-count {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  min-width: 52px;
+}
+
+.find-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.find-nav-btn:hover:not(:disabled) { background: var(--control-fill); color: var(--text-primary); }
+.find-nav-btn:disabled { color: var(--text-tertiary); opacity: 0.4; cursor: default; }
+.find-nav-btn svg { width: 10px; height: 10px; }
+
+#find-done {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  padding: 4px 8px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+
+#find-done:hover { background: var(--control-fill); }
+
+@media (prefers-reduced-motion: reduce) {
+  #findbar { transition: none; }
 }
 
 /* ============================================================
-   Viewer panel layout
+   Content area
    ============================================================ */
-#viewer-inner {
-  display: flex;
+#content-wrap {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  background: var(--bg-sidebar);
+}
+
+#tree-scroll {
   width: 100%;
   height: 100%;
-  overflow: hidden;
-}
-
-/* Tree panel — source list sidebar */
-#tree-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 150px;
-  overflow: hidden;
-  border-right: 1px solid var(--hairline);
+  overflow: auto;
   background: var(--bg-sidebar);
 }
 
 #tree-container {
-  flex: 1;
-  overflow: auto;
-  background: var(--bg-sidebar);
   padding: 6px 4px;
+  min-width: min-content;
 }
 
-/* Splitter */
-#splitter {
-  width: 5px;
-  background: var(--bg-window);
-  cursor: col-resize;
-  flex-shrink: 0;
-  position: relative;
-}
-
-#splitter::after {
-  content: '';
-  position: absolute;
-  top: 0; bottom: 0;
-  left: 2px;
-  width: 1px;
-  background: var(--hairline-strong);
-}
-
-#splitter:hover::after,
-#splitter.dragging::after {
-  left: 0;
-  width: 5px;
-  background: var(--accent);
-  opacity: 0.55;
-  border-radius: 2px;
-}
-
-/* Grid panel — inspector table */
-#grid-panel {
-  width: 270px;
-  min-width: 120px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  flex-shrink: 0;
-  background: var(--bg-content);
-}
-
-#grid-header {
-  display: flex;
-  height: 26px;
-  background: var(--bg-sidebar);
-  border-bottom: 1px solid var(--hairline);
-  flex-shrink: 0;
-}
-
-.grid-header-cell {
-  display: flex;
-  align-items: center;
-  padding: 0 10px;
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-  cursor: pointer;
-  user-select: none;
-  overflow: hidden;
-  white-space: nowrap;
-  transition: color 0.1s ease;
-}
-
-.grid-header-cell:hover {
-  color: var(--text-primary);
-}
-
-.grid-header-cell:first-child {
-  border-right: 1px solid var(--hairline);
-}
-
-#grid-col-name {
-  width: 55%;
-}
-
-#grid-col-value {
-  flex: 1;
-}
-
-.sort-arrow {
-  margin-left: 4px;
-  font-size: 8px;
-  color: var(--accent);
-}
-
-.sort-arrow.hidden {
-  visibility: hidden;
-}
-
-#grid-body {
-  flex: 1;
-  overflow-y: auto;
-  background: var(--bg-content);
-}
-
-.grid-row {
-  display: flex;
-  height: 24px;
-  border-bottom: 1px solid var(--hairline);
-  font-size: 12px;
-}
-
-.grid-row:nth-child(even) {
-  background: var(--row-alt);
-}
-
-.grid-row:last-child {
-  border-bottom: none;
-}
-
-.grid-cell {
-  display: flex;
-  align-items: center;
-  padding: 0 10px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-}
-
-.grid-cell-name {
-  width: 55%;
-  color: var(--text-primary);
-  font-family: var(--font-ui);
-  font-size: 12px;
-}
-
-.grid-cell-value {
-  flex: 1;
-  color: var(--text-secondary);
-}
-
-/* ============================================================
-   Search toolbar
-   ============================================================ */
-#search-toolbar {
-  border-top: 1px solid var(--hairline);
-  border-bottom: none;
-  height: 36px;
-}
-
-.search-input {
-  width: 170px;
-  height: 23px;
-  font-family: var(--font-ui);
-  font-size: 12px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: 999px;
-  padding: 1px 10px;
-  background: var(--control-fill);
-  color: var(--text-primary);
-  outline: none;
-  transition: border-color 0.1s ease, box-shadow 0.1s ease, background-color 0.1s ease;
-}
-
-.search-input::placeholder {
-  color: var(--text-tertiary);
-}
-
-.search-input:focus {
-  background: var(--bg-content);
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--focus-ring);
-}
-
-/* Arrow icons in search buttons */
-.arrow-down,
-.arrow-up {
-  display: inline-block;
-  width: 0;
-  height: 0;
-  border-left: 3.5px solid transparent;
-  border-right: 3.5px solid transparent;
-  vertical-align: middle;
-  margin-left: 4px;
-}
-
-.arrow-down {
-  border-top: 5px solid var(--text-secondary);
-}
-
-.arrow-up {
-  border-bottom: 5px solid var(--text-secondary);
-}
-
+.app.editing #tree-scroll { display: none; }
+.app.empty #tree-scroll { display: none; }
 /* ============================================================
    Tree nodes — source-list rows with disclosure triangles.
    Connector lines are reduced to faint indent guides; the .tc /
@@ -585,24 +429,24 @@ button {
 
 .tree-row.selected .icon-object::before,
 .tree-row.selected .icon-array::before {
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--on-accent-icon);
 }
 
 .tree-row.selected .icon-string::before,
 .tree-row.selected .icon-number::before,
 .tree-row.selected .icon-boolean::before,
 .tree-row.selected .icon-null::before {
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--on-accent-icon);
 }
 
 .tree-row.selected .expander-box::before {
-  border-left-color: rgba(255, 255, 255, 0.92);
+  border-left-color: var(--on-accent-icon);
 }
 
 .tree-row.selected .tc-pass.has-line,
 .tree-row.selected .tc-tee,
 .tree-row.selected .tc-corner {
-  background-image: linear-gradient(rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.35));
+  background-image: linear-gradient(var(--on-accent-guide), var(--on-accent-guide));
 }
 
 /* Base column — every indent/elbow cell in a tree row */
@@ -739,133 +583,232 @@ button {
   display: none;
 }
 
+/* Find highlights inside tree labels */
+mark.find-match {
+  background: var(--mark-bg);
+  color: inherit;
+  border-radius: 2px;
+}
+
+mark.find-match.current {
+  background: var(--mark-current-bg);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.5);
+}
+
+/* A highlight on the selected row sits on accent blue, so the label's
+   white would vanish into the mark; put the ink back to primary. */
+.tree-row.selected mark.find-match { color: var(--text-primary); }
+
 /* ============================================================
-   Modal dialogs — macOS alert sheet
+   Empty state
    ============================================================ */
-#modal-overlay {
+#empty-state {
+  display: none;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-tertiary);
+  text-align: center;
+  padding: 20px;
+}
+
+.app.empty:not(.editing) #empty-state { display: flex; }
+
+#empty-state svg { width: 34px; height: 34px; opacity: 0.5; }
+#empty-state .empty-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+#empty-state .empty-hint { font-size: 12px; max-width: 280px; line-height: 1.6; }
+#empty-state .empty-hint kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--control-fill);
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--hairline-strong);
+}
+
+/* ============================================================
+   Source editor
+   ============================================================ */
+#edit-wrap {
+  display: none;
+  width: 100%;
+  height: 100%;
+}
+
+.app.editing #edit-wrap { display: flex; }
+
+#edit-gutter {
+  width: 16px;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--hairline);
+}
+
+#edit-gutter-inner {
+  position: absolute;
+  top: 20px;
+  left: 0;
+  width: 100%;
+}
+
+.edit-error-marker {
+  position: absolute;
+  left: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 2px var(--bg-sidebar);
+}
+
+#edit-area {
+  flex: 1;
+  resize: none;
+  border: none;
+  outline: none;
+  background: var(--bg-content);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.85;
+  padding: 20px 18px;
+  white-space: pre;
+  overflow: auto;
+}
+
+#edit-area::placeholder { color: var(--text-tertiary); }
+
+/* ============================================================
+   Status bar — 24px in every state, including while the find
+   bar is open and while editing
+   ============================================================ */
+#statusbar {
+  height: 24px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  background: var(--bg-sidebar);
+  border-top: 1px solid var(--hairline);
+  padding: 0 10px;
+  font-size: 11.5px;
+  gap: 10px;
+}
+
+#status-left {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#status-left.error { color: var(--danger); }
+
+#status-spacer { flex: 1; }
+
+#status-path {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 55%;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: default;
+}
+
+#status-path.has-path { cursor: pointer; color: var(--text-primary); }
+#status-path.has-path:hover { background: var(--control-fill); }
+#status-path.hint { color: var(--text-tertiary); }
+
+/* ============================================================
+   Command palette
+   ============================================================ */
+#palette-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.22);
+  z-index: 1000;
+  background: var(--scrim);
   -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  z-index: 1000;
+  padding-top: 14vh;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
 }
 
-#modal-overlay.hidden {
-  display: none;
-}
+#palette-overlay.open { opacity: 1; pointer-events: auto; }
 
-#modal-window {
-  width: 300px;
+#palette {
+  width: 440px;
+  max-width: 90vw;
+  max-height: 60vh;
   background: var(--bg-elevated);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
   border: 0.5px solid var(--hairline-strong);
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow: var(--shadow-sheet);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  position: relative;
-  padding: 26px 22px 18px;
-  gap: 6px;
+  overflow: hidden;
+  transform: scale(0.97) translateY(-6px);
+  transition: transform 0.12s ease;
 }
 
-#modal-titlebar,
-#modal-body {
-  display: contents;
+#palette-overlay.open #palette { transform: scale(1) translateY(0); }
+
+@media (prefers-reduced-motion: reduce) {
+  #palette-overlay, #palette { transition: none; }
 }
 
-#modal-title {
-  order: 2;
-  font-weight: 600;
+#palette-input {
+  border: none;
+  outline: none;
+  background: transparent;
   font-size: 14px;
   color: var(--text-primary);
-  text-align: center;
-  margin-top: 2px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--hairline);
 }
 
-#modal-close-btn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 20px;
-  height: 20px;
+#palette-input::placeholder { color: var(--text-tertiary); }
+
+#palette-list { overflow-y: auto; padding: 6px; }
+
+.palette-item {
   display: flex;
   align-items: center;
-  justify-content: center;
-  background: var(--control-fill);
-  border: none;
-  cursor: pointer;
-  font-size: 10px;
-  line-height: 1;
-  color: var(--text-secondary);
-  border-radius: 50%;
-  z-index: 1;
-}
-
-#modal-close-btn:hover {
-  background: var(--control-fill-hover);
-  color: var(--text-primary);
-}
-
-#modal-error-icon {
-  order: 1;
-  margin: 2px auto 4px;
-}
-
-#modal-error-icon.hidden {
-  display: none;
-}
-
-#modal-error-icon svg circle {
-  fill: var(--danger) !important;
-  stroke: none !important;
-}
-
-#modal-error-icon svg line {
-  stroke: #ffffff !important;
-}
-
-#modal-message {
-  order: 3;
-  margin: 0;
-  margin-top: 2px;
-  max-width: 250px;
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--text-secondary);
-  text-align: center;
-  white-space: pre-line;
-}
-
-#modal-footer {
-  order: 4;
-  display: flex;
-  justify-content: center;
-  width: 100%;
-  padding-top: 18px;
-}
-
-#modal-ok-btn {
-  font-size: 12.5px;
-  font-weight: 600;
-  min-width: 84px;
-  padding: 6px 16px;
-  background: var(--accent);
-  border: none;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px;
   border-radius: 7px;
+  font-size: 12.5px;
+  color: var(--text-primary);
   cursor: pointer;
-  color: var(--text-on-accent);
-  transition: background-color 0.1s ease;
 }
 
-#modal-ok-btn:hover {
-  background: var(--accent-pressed);
+.palette-item.active { background: var(--accent); color: var(--text-on-accent); }
+.palette-item .p-hint { color: var(--text-tertiary); font-size: 11.5px; }
+.palette-item.active .p-hint { color: var(--on-accent-dim); }
+
+.palette-item .p-shortcut {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  background: var(--control-fill);
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
 }
 
-#modal-ok-btn:active {
-  background: var(--accent-pressed);
-  opacity: 0.85;
-}
+.palette-item.active .p-shortcut { background: var(--on-accent-fill); color: var(--text-on-accent); }
+.palette-empty { padding: 16px; text-align: center; color: var(--text-tertiary); font-size: 12.5px; }

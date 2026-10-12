@@ -97,14 +97,17 @@ test('renders a JSON URL in the tree viewer', async () => {
   const page = await context.newPage();
   await page.goto(JSON_URL);
 
-  // Viewer tab is showing, with the parsed tree in it.
-  await expect(page.locator('#tab-viewer')).toHaveClass(/active/);
+  // The document renders as the tree, with no interaction needed.
   await expect(page.locator('#tree-container .tree-row').first()).toBeVisible();
   await expect(page.locator('#tree-container')).toContainText('address');
-  await expect(page.locator('#tree-container')).toContainText('"Springfield"');
+  await expect(page.locator('.tree-row[data-path="address"]')).toBeVisible();
 
-  // Text tab holds the document, pretty-printed.
-  const raw = await page.locator('#json-input').inputValue();
+  // The status bar describes the document it just rendered.
+  await expect(page.locator('#status-left')).toContainText('Valid JSON');
+
+  // The source is there, pretty-printed, behind the Edit button.
+  await page.locator('#btn-edit').click();
+  const raw = await page.locator('#edit-area').inputValue();
   expect(JSON.parse(raw).address.city).toBe('Springfield');
   expect(raw).toContain('\n  "name": "John"');
 
@@ -112,7 +115,7 @@ test('renders a JSON URL in the tree viewer', async () => {
   await expect(page.locator('pre')).toHaveCount(0);
 
   // The extension's stylesheet loaded (the app is unreadable without it).
-  await expect(page.locator('#tab-strip')).toHaveCSS('display', 'flex');
+  await expect(page.locator('#toolbar')).toHaveCSS('display', 'flex');
   await page.close();
 });
 
@@ -121,7 +124,7 @@ test('renders JSON served with a strict CSP', async () => {
   await page.goto(CSP_URL);
 
   await expect(page.locator('#tree-container')).toContainText('"Springfield"');
-  await expect(page.locator('#tab-strip')).toHaveCSS('display', 'flex');
+  await expect(page.locator('#toolbar')).toHaveCSS('display', 'flex');
   await page.close();
 });
 
@@ -129,9 +132,9 @@ test('leaves ordinary pages alone', async () => {
   const page = await context.newPage();
   await page.goto('http://localhost:8080/');
 
-  // The app itself is an ordinary page: it must boot normally, on the Text tab.
-  await expect(page.locator('#tab-text')).toHaveClass(/active/);
-  await expect(page.locator('#json-input')).toHaveValue('');
+  // The app itself is an ordinary page: it must boot normally, and empty.
+  await expect(page.locator('#app')).toHaveClass(/empty/);
+  await expect(page.locator('#empty-state')).toBeVisible();
   await page.close();
 });
 

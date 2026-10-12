@@ -1,15 +1,30 @@
 # jsontree
 
-A static JSON viewer and formatter — a clean-room recreation of the classic "Online JSON Viewer" look and feel. Runs entirely in the browser; nothing you paste is sent anywhere.
+A static JSON viewer and formatter that behaves like a native macOS utility.
+Runs entirely in the browser; nothing you paste is sent anywhere.
 
 ## Features
 
-- Format and minify JSON
-- Interactive tree viewer with expand/collapse
-- Property grid with sortable columns
-- Keyword search with Next/Previous navigation
-- Paste/Copy clipboard support
-- Classic Ext JS 2.x gray theme
+- Interactive tree viewer with expand/collapse and full keyboard navigation
+- Find bar on ⌘F — incremental, with a match count, revealing matches buried
+  in collapsed subtrees
+- Command palette on ⌘K with fuzzy filtering
+- A status bar that always shows validity, size and the selected node's path
+  (`results[1].author.orcid`), click to copy
+- Source editor with precise line/column error reporting — no modal dialogs
+- Format, Minify, Copy, Paste and Clear
+- Light and dark, following the system appearance
+
+## Keyboard
+
+| | |
+|---|---|
+| `⌘F` | Find · `⌘G` / `⇧⌘G` next and previous · `Esc` closes |
+| `⌘K` | Command palette |
+| `↑` `↓` | Move through the tree |
+| `←` `→` | Collapse / expand, or step out and in |
+| `⌘⌥←` `⌘⌥→` | Collapse all / expand all |
+| `⌘⌥C` | Copy the selected node's path |
 
 ## Run locally
 
