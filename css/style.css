@@ -78,6 +78,10 @@
   --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Mono", Consolas, monospace;
 
+  /* Which icon the appearance switch shows: the one it leads to. */
+  --theme-moon: block;
+  --theme-sun: none;
+
   color-scheme: light;
 }
 
@@ -116,7 +120,10 @@
     --mark-bg: rgba(255, 214, 10, 0.35);
     --mark-current-bg: rgba(255, 159, 10, 0.6);
     --match-row: rgba(255, 214, 10, 0.14);
-  
+
+    --theme-moon: none;
+    --theme-sun: block;
+
     color-scheme: dark;
   }
 }
@@ -155,6 +162,9 @@
   --mark-bg: rgba(255, 214, 10, 0.35);
   --mark-current-bg: rgba(255, 159, 10, 0.6);
   --match-row: rgba(255, 214, 10, 0.14);
+
+  --theme-moon: none;
+  --theme-sun: block;
 
   color-scheme: dark;
 }
@@ -347,8 +357,8 @@ button {
   .mode-icon { display: none; }
 }
 
-/* The tree and the source editor each bring their own actions; Copy belongs to
-   both and stays where it is, so only the buttons after it change. */
+/* The tree and the source editor each bring their own actions, and only one
+   set shows at a time. */
 .app:not(.editing) .tb-edit,
 .app.editing .tb-view { display: none; }
 
@@ -486,6 +496,32 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .search-field { transition: none; }
 }
+
+/* ============================================================
+   Appearance switch — the last thing in the toolbar, past the
+   search field, so the field can widen without moving it. Like
+   the mode switch it shows where it leads: a moon in light, a
+   sun in dark.
+   ============================================================ */
+.tb-theme {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  margin-left: 4px;
+  padding: 0;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  transition: background-color 0.1s ease;
+}
+
+.tb-theme:hover { background: var(--control-fill); color: var(--text-primary); }
+.tb-theme:active { background: var(--control-fill-active); }
+.tb-theme svg { width: 15px; height: 15px; }
+.theme-icon-moon { display: var(--theme-moon); }
+.theme-icon-sun { display: var(--theme-sun); }
 
 /* ============================================================
    Content area

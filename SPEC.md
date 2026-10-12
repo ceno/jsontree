@@ -44,8 +44,9 @@ cleared: empty the source, then `View`.
 
 ### Toolbar
 
-Left to right: wordmark · mode switch · actions · spacer · search field. The
-actions are flat macOS toolbar buttons, 12.5px, rounded hover fill.
+Left to right: wordmark · mode switch · actions · spacer · search field ·
+appearance switch. The actions are flat macOS toolbar buttons, 12.5px, rounded
+hover fill.
 
 The mode switch is the one button that moves between the tree and the source
 editor. It sits directly beside the wordmark, ahead of the actions, because it
@@ -64,12 +65,19 @@ ever visible:
 
 - **Over the tree** (including the empty state): `Copy` `Copy Path` ·
   `Expand All` `Collapse All`
-- **In the source editor**: `Copy` `Paste` · `Format` `Minify`
+- **In the source editor**: `Format` `Minify`
 
-`Copy` is first in both and does not move when the set changes. It copies the
-whole document — pretty-printed over the tree, exactly as typed in the editor.
-`Paste`, `Format` and `Minify` act on the editor's text, so they exist nowhere
-else.
+`Copy` and `Copy Path` are a pair: both act on the selected row, one taking
+its value and the other its path. `Copy` puts the whole of the selected node
+on the clipboard as pretty-printed JSON — an array comes out as an array with
+everything in it, whether or not it is expanded, and a leaf as its value, a
+string in its quotes. With nothing selected, or the root, that is the whole
+document. The status bar says which it was: `Copied value` or
+`Copied document`.
+
+The editor has no Copy or Paste button. It is a text field, and the keyboard
+does both there. `Format` and `Minify` act on the editor's text, so they exist
+nowhere else.
 
 Every action is a toolbar button. There is no command palette or menu behind
 them, so an action with no button in the current view does not exist there.
@@ -204,9 +212,7 @@ silently discarding the edit. Opening it puts the caret at the top.
 
 `Format` re-indents the text with two spaces and `Minify` strips its
 whitespace. Both rewrite the textarea and nothing else: neither touches the
-clipboard, so getting minified JSON out is `Minify`, then `Copy`. `Paste`
-replaces the whole text with the clipboard. An invalid buffer is left as it is
-and the error reported.
+clipboard. An invalid buffer is left as it is and the error reported.
 
 ### Errors
 
@@ -243,6 +249,24 @@ inside pages whose appearance we do not control.
 No component rule may contain a literal colour. A colour defined only inside a
 media query renders one theme's text on the other theme's ground.
 
+### Appearance switch
+
+The last thing in the toolbar, past the search field — so the field can widen
+on focus without moving it — is an icon button that goes between light and
+dark by setting `data-theme`. Like the mode switch it shows where it leads: a
+moon in light, a sun in dark. It is there in every view and at every width.
+
+- With nothing chosen the app follows the system.
+- Choosing what the system would show anyway is choosing to follow it again:
+  the attribute is dropped rather than kept, so one press never pins the app
+  for good.
+- The website remembers the choice in `localStorage` (`jsontree-theme`), and a
+  line in the page's `<head>` applies it before anything is drawn, so a reload
+  never shows the other appearance first. Nothing else is ever stored.
+- The extension does not remember it. In a page it took over, `localStorage`
+  belongs to the site that served the document, and the extension keeps
+  nothing of its own (`PRIVACY.md`). There the choice lasts for the page.
+
 ## External API
 
 `window.jsontree.load(text)` renders a document; the extension calls it with the
@@ -263,13 +287,15 @@ occurrence, marks lying exactly under their text, scrolling to a match,
 following edits, handing the caret back, standing across the view change,
 invalid JSON, the boxed match on a line too long to colour) and the field
 folding in a narrow window, the toolbar (which actions show in
-which view, each of them against the document and the clipboard, and that
-Format and Minify leave the clipboard alone), the editor (round-trip, refusing
+which view, each of them against the document and the clipboard, that Copy
+takes the selected node whole, and that Format and Minify leave the clipboard
+alone), the editor (round-trip, pasting with the keyboard, refusing
 to close while invalid, line numbers, colouring by type, the coloured copy
 lying exactly over the textarea, escaping, the fault underline, drawing the
 right lines wherever a long document is scrolled to, and the plain fallback),
-error positions including truncated input, and the theme override in both
-directions.
+error positions including truncated input, the theme override in both
+directions, and the appearance switch (both ways, remembered across a reload,
+and dropped when it agrees with the system).
 `tests/extension.spec.js` drives the real extension in a browser.
 
 ## Non-goals

@@ -12,8 +12,8 @@ Runs entirely in the browser; nothing you paste is sent anywhere.
   (`results[1].author.orcid`), click to copy
 - Source editor with line numbers, syntax colouring and precise line/column
   error reporting — no modal dialogs
-- Format, Minify, Copy and Paste
-- Light and dark, following the system appearance
+- Copy the selected node or its path; Format and Minify in the editor
+- Light and dark, following the system appearance, with a switch in the toolbar
 
 ## Keyboard
 

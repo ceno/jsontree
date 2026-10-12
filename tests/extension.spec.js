@@ -126,6 +126,14 @@ test('renders a JSON URL in the tree viewer', async () => {
   await expect(page.locator('.tree-row.search-match')).toHaveAttribute('data-path', 'address.city');
   await expect(page.locator('#search-count')).toHaveText('1/1');
 
+  // The appearance switch works, and leaves nothing in the site's storage:
+  // here localStorage is the page's, not ours.
+  const forced = () => page.evaluate(() => document.documentElement.dataset.theme || null);
+  expect(await forced()).toBeNull();
+  await page.locator('#btn-theme').click();
+  expect(await forced()).not.toBeNull();
+  expect(await page.evaluate(() => localStorage.length)).toBe(0);
+
   // No leftovers from the raw document.
   await expect(page.locator('pre')).toHaveCount(0);
 

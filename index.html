@@ -8,16 +8,20 @@
   <link rel="alternate icon" href="favicon-32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="stylesheet" href="css/style.css">
+  <!-- The appearance chosen with the toolbar's switch, applied before anything
+       is drawn so the page never shows the other one first. js/app.js writes
+       this key. -->
+  <script>try { var t = localStorage.getItem('jsontree-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
 </head>
 <body>
   <div id="app" class="app">
 
     <!-- Unified toolbar: wordmark and mode switch, then the actions, with the
          search field on the right. The switch names the view it leads to:
-         Edit over the tree, View in the editor. Copy is always the first
-         action; the rest are the tree's (tb-view) or the source editor's
-         (tb-edit), and only one set shows at a time. The search field is
-         there in both: it finds rows over the tree and text in the editor. -->
+         Edit over the tree, View in the editor. The actions are the tree's
+         (tb-view) or the source editor's (tb-edit), and only one set shows
+         at a time. The search field is there in both: it finds rows over the
+         tree and text in the editor. Last, the appearance switch. -->
     <div id="toolbar">
       <div class="brand"><span class="brand-mark">{ }</span><span class="brand-name">jsontree</span></div>
       <button class="tb-btn tb-mode" id="btn-edit" title="Edit the source">
@@ -26,10 +30,9 @@
         <span class="mode-label" id="btn-edit-label">Edit</span>
       </button>
       <span class="tb-sep"></span>
-      <button class="tb-btn" id="btn-copy" title="Copy all">Copy</button>
+      <button class="tb-btn tb-view" id="btn-copy" title="Copy the selected value">Copy</button>
       <button class="tb-btn tb-view" id="btn-copy-path" title="Copy the selected path (⌘⌥C)">Copy Path</button>
-      <button class="tb-btn tb-edit" id="btn-paste" title="Replace with the clipboard">Paste</button>
-      <span class="tb-sep"></span>
+      <span class="tb-sep tb-view"></span>
       <button class="tb-btn tb-view" id="btn-expand-all" title="Expand all (⌘⌥→)">Expand All</button>
       <button class="tb-btn tb-view" id="btn-collapse-all" title="Collapse all (⌘⌥←)">Collapse All</button>
       <button class="tb-btn tb-edit" id="btn-format" title="Re-indent with two spaces">Format</button>
@@ -49,6 +52,10 @@
           <svg viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M1.5 1.5 8.5 8.5M8.5 1.5 1.5 8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
         </button>
       </div>
+      <button class="tb-theme" id="btn-theme" aria-label="Switch between light and dark" title="Switch between light and dark">
+        <svg class="theme-icon-moon" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M14 8.53A6 6 0 1 1 7.47 2 4.67 4.67 0 0 0 14 8.53Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        <svg class="theme-icon-sun" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.4"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.05 3.05l1.05 1.05M11.9 11.9l1.05 1.05M3.05 12.95l1.05-1.05M11.9 4.1l1.05-1.05" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
     </div>
 
     <!-- Content: the tree, the empty state, or the source editor -->

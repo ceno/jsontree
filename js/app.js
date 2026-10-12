@@ -18,11 +18,11 @@ var __jsontreeMain = function () {
   const btnCopyPath    = document.getElementById('btn-copy-path');
   const btnExpandAll   = document.getElementById('btn-expand-all');
   const btnCollapseAll = document.getElementById('btn-collapse-all');
-  const btnPaste       = document.getElementById('btn-paste');
   const btnFormat      = document.getElementById('btn-format');
   const btnMinify      = document.getElementById('btn-minify');
   const btnEdit        = document.getElementById('btn-edit');
   const btnEditLabel   = document.getElementById('btn-edit-label');
+  const btnTheme       = document.getElementById('btn-theme');
 
   const searchField = document.getElementById('search-field');
   const searchInput = document.getElementById('search-input');
@@ -1347,13 +1347,9 @@ var __jsontreeMain = function () {
   // ----------------------------------------------------------------
   // Commands
   // ----------------------------------------------------------------
-  function currentSource() {
-    return appEl.classList.contains('editing') ? editArea.value : rawText;
-  }
-
-  // Format and Minify rewrite the text in the editor and nothing else — putting
-  // it on the clipboard is Copy's job. Like Paste, they exist only in the
-  // editor: over the tree there is no text to rewrite.
+  // Format and Minify rewrite the text in the editor and nothing else: neither
+  // touches the clipboard. They exist only in the editor — over the tree there
+  // is no text to rewrite.
   function rewriteSource(indent, done, nothing) {
     const res = tryParse(editArea.value);
     if (!res.ok) { showError(res.message); return; }
@@ -1366,40 +1362,60 @@ var __jsontreeMain = function () {
   function doFormat() { rewriteSource(2, 'Formatted', 'Nothing to format'); }
   function doMinify() { rewriteSource(0, 'Minified', 'Nothing to minify'); }
 
-  function doCopyAll() {
-    if (isEmpty && !appEl.classList.contains('editing')) {
-      showStatus('Nothing to copy');
-      return;
-    }
-    copyText(currentSource());
-    showStatus('Copied');
+  // Copy takes the selected node, all of it: an array comes out as an array
+  // with everything in it, a leaf as its value. With nothing selected, or the
+  // root, that is the whole document. What lands on the clipboard is always
+  // JSON. The tree's own action — the editor copies with the keyboard.
+  function doCopy() {
+    if (isEmpty) { showStatus('Nothing to copy'); return; }
+    const whole = !selectedRow || selectedRow._nodeData.path === '';
+    copyText(whole ? rawText : JSON.stringify(selectedRow._nodeData.value, null, 2));
+    showStatus(whole ? 'Copied document' : 'Copied value');
   }
 
   function doCopyPath() { copyPath(activePath()); }
 
-  function doPaste() {
-    if (!navigator.clipboard || !navigator.clipboard.readText) {
-      showError('Clipboard access denied — press ⌘V in the editor instead.');
-      return;
-    }
-    navigator.clipboard.readText().then((text) => {
-      // The clipboard answers late, after a permission prompt at worst, and
-      // the reader may have left the editor by then.
-      if (!appEl.classList.contains('editing')) return;
-      editArea.value = text;
-      validateEditBuffer();
-    }).catch(() => {
-      showError('Clipboard access denied — press ⌘V in the editor instead.');
-    });
-  }
-
-  btnCopy.addEventListener('click', doCopyAll);
+  btnCopy.addEventListener('click', doCopy);
   btnCopyPath.addEventListener('click', doCopyPath);
   btnExpandAll.addEventListener('click', expandAll);
   btnCollapseAll.addEventListener('click', collapseAll);
-  btnPaste.addEventListener('click', doPaste);
   btnFormat.addEventListener('click', doFormat);
   btnMinify.addEventListener('click', doMinify);
+
+  // ----------------------------------------------------------------
+  // Appearance
+  //
+  // The stylesheet follows the system unless <html> carries data-theme, so
+  // switching is a matter of setting it. Choosing what the system would show
+  // anyway is choosing to follow it again, so then the attribute is dropped
+  // rather than kept — otherwise one press would pin the app for good.
+  // ----------------------------------------------------------------
+  const THEME_KEY = 'jsontree-theme';     // index.html reads it before first paint
+  const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+
+  // The website remembers the choice. The extension does not: in a page it
+  // took over, localStorage belongs to the site that served the document, and
+  // the extension keeps nothing of its own (see PRIVACY.md).
+  const remembersTheme = !window.__JSONTREE_DEFER__;
+
+  function toggleTheme() {
+    const root = document.documentElement;
+    const system = systemDark.matches ? 'dark' : 'light';
+    const forced = root.dataset.theme;
+    const shown = forced === 'dark' || forced === 'light' ? forced : system;
+    const next = shown === 'dark' ? 'light' : 'dark';
+
+    if (next === system) delete root.dataset.theme;
+    else root.dataset.theme = next;
+
+    if (!remembersTheme) return;
+    try {
+      if (next === system) localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, next);
+    } catch (e) { /* storage is off; the choice lasts for this page */ }
+  }
+
+  btnTheme.addEventListener('click', toggleTheme);
 
   // ----------------------------------------------------------------
   // Keyboard

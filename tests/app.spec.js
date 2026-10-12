@@ -308,12 +308,42 @@ test('11b. the clear button empties the field and keeps the caret in it', async 
 // ----------------------------------------------------------------
 // Toolbar actions
 // ----------------------------------------------------------------
-test('14. Copy puts the pretty-printed document on the clipboard', async ({ page, context }) => {
+test('14. Copy with nothing selected puts the pretty-printed document on the clipboard', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await load(page, '{"b":2,"a":1}');
   await page.locator('#btn-copy').click();
+  await expect(page.locator('#status-left')).toHaveText('Copied document');
   const text = await page.evaluate(() => navigator.clipboard.readText());
   expect(text).toBe('{\n  "b": 2,\n  "a": 1\n}');   // key order preserved
+});
+
+// Copy used to take the whole document whatever was selected, while Copy Path
+// beside it took the selection.
+test('14b. Copy takes the selected node, with everything in it', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await load(page);
+  const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
+  const copy = async (path) => {
+    await page.locator(`.tree-row[data-path="${path}"]`).click();
+    await page.locator('#btn-copy').click();
+    return clipboard();
+  };
+
+  // A container still closed comes out whole, and so does one nested in it.
+  expect(await copy('tags')).toBe('[\n  "admin",\n  "user"\n]');
+  await expect(page.locator('#status-left')).toHaveText('Copied value');
+  expect(await copy('address')).toBe(JSON.stringify(JSON.parse(SAMPLE).address, null, 2));
+
+  // A leaf is its value, as JSON.
+  expect(await copy('name')).toBe('"John"');
+  expect(await copy('age')).toBe('30');
+  expect(await copy('score')).toBe('null');
+  await expand(page, 'tags');
+  expect(await copy('tags[1]')).toBe('"user"');
+
+  // The root is the document.
+  expect(await copy('')).toBe(PRETTY);
+  await expect(page.locator('#status-left')).toHaveText('Copied document');
 });
 
 test('15. Minify rewrites the source in place and leaves the clipboard alone', async ({ page, context }) => {
@@ -456,6 +486,46 @@ test('24. an explicit theme overrides the OS preference in both directions', asy
   expect(await bg()).toBe(lightBg);
 });
 
+test('24b. the appearance switch goes between light and dark, and the choice is remembered', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await load(page);
+  const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  const forced = () => page.evaluate(() => document.documentElement.dataset.theme || null);
+  const saved = () => page.evaluate(() => localStorage.getItem('jsontree-theme'));
+  const lightBg = await bg();
+
+  // It shows where it leads: a moon in light, a sun in dark.
+  await expect(page.locator('#btn-theme .theme-icon-moon')).toBeVisible();
+  await expect(page.locator('#btn-theme .theme-icon-sun')).toBeHidden();
+
+  await page.locator('#btn-theme').click();
+  expect(await forced()).toBe('dark');
+  const darkBg = await bg();
+  expect(darkBg).not.toBe(lightBg);
+  await expect(page.locator('#btn-theme .theme-icon-sun')).toBeVisible();
+  await expect(page.locator('#btn-theme .theme-icon-moon')).toBeHidden();
+
+  // Still dark after a reload, and from the first frame: the attribute is
+  // there before the app's own script has run.
+  await page.reload();
+  expect(await forced()).toBe('dark');
+  expect(await bg()).toBe(darkBg);
+
+  // Back to what the system shows is back to following the system, so
+  // nothing is left forced or saved.
+  await page.locator('#btn-theme').click();
+  expect(await bg()).toBe(lightBg);
+  expect(await forced()).toBeNull();
+  expect(await saved()).toBeNull();
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  expect(await bg()).toBe(darkBg);                       // following it
+  await page.locator('#btn-theme').click();              // and against it, the other way
+  expect(await forced()).toBe('light');
+  expect(await saved()).toBe('light');
+  expect(await bg()).toBe(lightBg);
+});
+
 // ----------------------------------------------------------------
 // Regressions found by QA against commit 3660872
 // ----------------------------------------------------------------
@@ -483,14 +553,15 @@ test('29. loading unparseable text opens the editor at the top', async ({ page }
 });
 
 // D6: an unparseable paste flashed an error over the unchanged document and
-// the pasted text was unreachable. Paste only exists in the editor now, so the
-// text lands in front of the reader with the error beside it.
+// the pasted text was unreachable. Pasting is the keyboard's job, in the
+// editor, so the text lands in front of the reader with the error beside it.
 test('30. pasting unparseable text keeps it in the editor with the error', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await load(page);
   await page.evaluate(() => navigator.clipboard.writeText('not json at all'));
   await page.locator('#btn-edit').click();
-  await page.locator('#btn-paste').click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.press('ControlOrMeta+v');
 
   await expect(page.locator('#edit-area')).toHaveValue('not json at all');
   await expect(page.locator('#edit-highlight')).toHaveText('not json at all');
@@ -567,7 +638,7 @@ test('36. the toolbar keeps every control reachable when narrow', async ({ page 
       const overflow = await page.locator('#toolbar').evaluate(
         el => el.scrollWidth - el.clientWidth);
       expect(overflow, `toolbar overflows at ${width}px (${mode})`).toBeLessThanOrEqual(0);
-      for (const id of ['search-field', 'btn-edit']) {
+      for (const id of ['search-field', 'btn-edit', 'btn-theme']) {
         const box = await page.locator('#' + id).boundingBox();
         expect(box.x + box.width, `${id} off-screen at ${width}px (${mode})`).toBeLessThanOrEqual(width);
       }
@@ -673,7 +744,7 @@ test('42. loading unparseable text leaves the button reading View', async ({ pag
 const toolbarLabels = async (page) =>
   (await page.locator('#toolbar .tb-btn:visible').allTextContents()).map(t => t.trim());
 const TREE_ACTIONS = ['Edit', 'Copy', 'Copy Path', 'Expand All', 'Collapse All'];
-const EDITOR_ACTIONS = ['View', 'Copy', 'Paste', 'Format', 'Minify'];
+const EDITOR_ACTIONS = ['View', 'Format', 'Minify'];
 
 test('44. the toolbar shows the tree\'s actions over the tree and the editor\'s while editing', async ({ page }) => {
   await page.goto('/');
@@ -683,12 +754,13 @@ test('44. the toolbar shows the tree\'s actions over the tree and the editor\'s 
 
   await page.evaluate((t) => window.jsontree.load(t), SAMPLE);
   expect(await toolbarLabels(page)).toEqual(TREE_ACTIONS);
-  const copyAt = (await page.locator('#btn-copy').boundingBox()).x;
+  // Each set is two groups at most, so one separator never follows another.
+  const separators = () => page.locator('#toolbar .tb-sep:visible').count();
+  expect(await separators()).toBe(2);
 
   await page.locator('#btn-edit').click();
   expect(await toolbarLabels(page)).toEqual(EDITOR_ACTIONS);
-  // Copy is common to both and must not move under the pointer.
-  expect((await page.locator('#btn-copy').boundingBox()).x).toBe(copyAt);
+  expect(await separators()).toBe(1);
   await expect(page.locator('#toolbar')).toHaveCSS('height', '38px');
 
   await page.locator('#btn-edit').click();
@@ -719,31 +791,6 @@ test('46. the Expand All and Collapse All buttons open and close the whole tree'
   await page.locator('#btn-collapse-all').click();
   await expect(lat).toBeHidden();
   await expect(page.locator('.tree-row[data-path="name"]')).toBeVisible();   // the root stays open
-});
-
-// Minify used to copy; now getting minified JSON out is Minify, then Copy.
-test('47. Copy in the editor copies the text as it stands', async ({ page, context }) => {
-  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  await page.goto('/');
-  await type(page, '{\n  "name": "John",\n  "age": 30\n}');
-  await page.locator('#btn-minify').click();
-  await page.locator('#btn-copy').click();
-
-  await expect(page.locator('#status-left')).toHaveText('Copied');
-  expect(await page.evaluate(() => navigator.clipboard.readText()))
-    .toBe('{"name":"John","age":30}');
-});
-
-test('48. Paste in the editor replaces the text with the clipboard', async ({ page, context }) => {
-  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  await load(page);
-  await page.evaluate(() => navigator.clipboard.writeText('{"pasted":true}'));
-  await page.locator('#btn-edit').click();
-  await page.locator('#btn-paste').click();
-  await expect(page.locator('#edit-area')).toHaveValue('{"pasted":true}');
-
-  await page.locator('#btn-edit').click();
-  await expect(page.locator('.tree-row[data-path="pasted"]')).toBeVisible();
 });
 
 // ----------------------------------------------------------------
@@ -824,8 +871,8 @@ test('53. the editor numbers every line and keeps up as the text changes', async
   await page.locator('#edit-area').fill('{"a":1,"b":[1,2]}');
   expect(await lineNumbers(page)).toEqual(['1']);
 
-  // Format, Minify and Paste rewrite the text without the reader typing, and
-  // the numbers and the coloured copy have to follow those too.
+  // Format, Minify and a paste rewrite the text without the reader typing,
+  // and the numbers and the coloured copy have to follow those too.
   await page.locator('#btn-format').click();
   expect(await lineNumbers(page)).toEqual(['1', '2', '3', '4', '5', '6', '7']);
   expect(await drawnText(page)).toBe(await page.locator('#edit-area').inputValue());
@@ -835,7 +882,9 @@ test('53. the editor numbers every line and keeps up as the text changes', async
   expect(await drawnText(page)).toBe('{"a":1,"b":[1,2]}');
 
   await page.evaluate(() => navigator.clipboard.writeText('[\n  true\n]'));
-  await page.locator('#btn-paste').click();
+  await page.locator('#edit-area').focus();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.press('ControlOrMeta+v');
   await expect(page.locator('#edit-area')).toHaveValue('[\n  true\n]');
   expect(await lineNumbers(page)).toEqual(['1', '2', '3']);
   expect(await drawnText(page)).toBe('[\n  true\n]');
