@@ -1299,3 +1299,94 @@ test('68. in a narrow window the search field folds to its magnifier and opens o
   expect(await width()).toBe(26);
   expect(await page.locator('#search-field').evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe(standing);
 });
+
+// ----------------------------------------------------------------
+// The caret's line in the editor
+// ----------------------------------------------------------------
+// Where line n lies on the page, worked out from the textarea itself.
+const lineTop = (page, n) => page.locator('#edit-area').evaluate((el, n) =>
+  el.getBoundingClientRect().top + parseFloat(getComputedStyle(el).paddingTop) + n * 20 - el.scrollTop, n);
+const bandTop = async (page) => (await page.locator('#edit-current-line').boundingBox()).y;
+
+test('69. the caret\'s line is banded and its number is in full ink', async ({ page }) => {
+  await page.goto('/');
+  const band = page.locator('#edit-current-line');
+  const number = page.locator('#edit-current-number');
+
+  // An empty editor still has a first line, and the caret is on it.
+  await expect(band).toBeVisible();
+  await expect(number).toHaveText('1');
+  expect(await bandTop(page)).toBe(await lineTop(page, 0));
+
+  await type(page, PRETTY);                        // 18 lines; the caret ends on the last
+  await expect(number).toHaveText('18');
+  expect(await bandTop(page)).toBe(await lineTop(page, 17));
+
+  // The band is one line high and runs the width of the text area; the
+  // number takes the text's ink rather than the gutter's.
+  const box = await band.boundingBox();
+  const code = await page.locator('#edit-code').boundingBox();
+  expect(box.height).toBe(20);
+  expect(box.x).toBe(code.x);
+  expect(box.width).toBe(code.width);
+  const ink = (sel) => page.locator(sel).evaluate(el => getComputedStyle(el).color);
+  expect(await ink('#edit-current-number')).toBe(await ink('#edit-highlight'));
+  expect(await ink('#edit-current-number')).not.toBe(await ink('#edit-line-numbers'));
+  expect((await number.boundingBox()).y).toBe(await lineTop(page, 17));
+
+  // It follows the caret, by keyboard and by mouse.
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowUp');
+  await expect(number).toHaveText('15');
+  expect(await bandTop(page)).toBe(await lineTop(page, 14));
+  await page.locator('#edit-area').click({ position: { x: 120, y: 12 + 2 * 20 + 10 } });
+  await expect(number).toHaveText('3');
+  expect(await bandTop(page)).toBe(await lineTop(page, 2));
+
+  // A selection takes the band away; the number goes with the end that moves.
+  await page.keyboard.press('Shift+ArrowDown');
+  await expect(band).toBeHidden();
+  await expect(number).toHaveText('4');
+  await page.keyboard.press('Shift+ArrowUp');
+  await page.keyboard.press('Shift+ArrowUp');
+  await expect(number).toHaveText('2');
+  await page.keyboard.press('ArrowLeft');
+  await expect(band).toBeVisible();
+  expect(await bandTop(page)).toBe(await lineTop(page, 1));
+
+  // Typing a new line takes it down with the caret.
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await expect(number).toHaveText('3');
+  expect(await bandTop(page)).toBe(await lineTop(page, 2));
+});
+
+test('70. the band stays on its line as the editor scrolls', async ({ page }) => {
+  await page.goto('/');
+  const long = JSON.stringify(Array.from({ length: 498 }, (_, i) => ({ id: i }).id), null, 2);   // 500 lines
+  await type(page, long);
+  const number = page.locator('#edit-current-number');
+  const scrollTo = (y) => page.locator('#edit-area').evaluate((el, y) => { el.scrollTop = y; }, y);
+
+  await page.keyboard.press('ControlOrMeta+ArrowUp');
+  await expect(number).toHaveText('1');
+  expect(await bandTop(page)).toBe(await lineTop(page, 0));
+
+  // Scrolled a little: the band goes up with its line.
+  await scrollTo(30);
+  await expect.poll(() => bandTop(page)).toBe(38 + 12 - 30);
+  expect(await bandTop(page)).toBe(await lineTop(page, 0));
+  await expect(number).toHaveText('1');
+
+  // Scrolled far away: that line is no longer drawn, so neither is its number.
+  await scrollTo(5000);
+  await expect(number).toBeHidden();
+  expect(await bandTop(page)).toBe(await lineTop(page, 0));
+
+  // And the caret sent to the far end is banded there.
+  await page.keyboard.press('ControlOrMeta+ArrowDown');
+  await expect(number).toHaveText('500');
+  await expect(number).toBeVisible();
+  expect(await bandTop(page)).toBe(await lineTop(page, 499));
+  const editor = await page.locator('#edit-area').boundingBox();
+  expect(await bandTop(page)).toBeLessThan(editor.y + editor.height);
+});

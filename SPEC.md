@@ -206,6 +206,15 @@ punctuation stay in the default ink.
   shows its own text, plain. The line numbers stay.
 - The gutter is 46px, which holds four digits, and widens with the number of
   lines beyond that.
+- The line the caret is on is picked out as a code editor does it: a faint
+  band behind the text, the width of the text area, and that line's number in
+  the text's ink instead of the gutter's grey. Both follow the caret however
+  it moves — typing, arrow keys, the mouse — and the band stays on its line as
+  the editor scrolls. While text is selected the band is dropped, since it
+  would only muddy the selection, and the number goes with the end of the
+  selection that moves. They stay when focus is elsewhere, in the search
+  field for instance. On the line with the fault, the red number wins.
+
 Validation runs on every keystroke. Leaving the editor requires JSON that
 parses — otherwise the error stands and the editor stays open, rather than
 silently discarding the edit. Opening it puts the caret at the top.
@@ -292,7 +301,8 @@ takes the selected node whole, and that Format and Minify leave the clipboard
 alone), the editor (round-trip, pasting with the keyboard, refusing
 to close while invalid, line numbers, colouring by type, the coloured copy
 lying exactly over the textarea, escaping, the fault underline, drawing the
-right lines wherever a long document is scrolled to, and the plain fallback),
+right lines wherever a long document is scrolled to, the plain fallback, and
+the band and number on the caret's line),
 error positions including truncated input, the theme override in both
 directions, and the appearance switch (both ways, remembered across a reload,
 and dropped when it agrees with the system).

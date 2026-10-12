@@ -36,6 +36,8 @@ var __jsontreeMain = function () {
   const editGutter      = document.getElementById('edit-gutter');
   const editGutterInner = document.getElementById('edit-gutter-inner');
   const editLineNumbers = document.getElementById('edit-line-numbers');
+  const editCurrentLine   = document.getElementById('edit-current-line');
+  const editCurrentNumber = document.getElementById('edit-current-number');
   const editMarks       = document.getElementById('edit-marks');
   const editHighlight   = document.getElementById('edit-highlight');
 
@@ -1261,6 +1263,24 @@ var __jsontreeMain = function () {
     }
   }
 
+  // The caret's line, as in any code editor: a band behind the text and the
+  // line's number in full ink. While text is selected the band is dropped —
+  // it would only muddy the selection — and the number alone says where the
+  // caret is.
+  function placeCaretLine() {
+    const backward = editArea.selectionDirection === 'backward';
+    const line = lineOfOffset(backward ? editArea.selectionStart : editArea.selectionEnd);
+    editCurrentLine.hidden = editArea.selectionStart !== editArea.selectionEnd;
+    editCurrentLine.style.transform =
+      'translateY(' + (line * EDIT_LINE_HEIGHT - editArea.scrollTop) + 'px)';
+
+    const drawn = line >= drawnFirst && line <= drawnLast;
+    editCurrentNumber.hidden = !drawn;
+    if (!drawn) return;
+    editCurrentNumber.textContent = line + 1;
+    editCurrentNumber.style.top = ((line - drawnFirst) * EDIT_LINE_HEIGHT) + 'px';
+  }
+
   // Neither the gutter nor the copies of the text scroll: they are slid to
   // wherever the textarea is, and redrawn when it has moved past what was
   // drawn. `redraw` forces that, for when the text or the search has changed.
@@ -1281,6 +1301,7 @@ var __jsontreeMain = function () {
     const boxed = editMarks.querySelector('mark.boxed');
     editMarks.style.transform =
       'translate(' + ((boxed && plainMatch ? plainMatch.scrollLeft : 0) - left) + 'px, ' + dy + 'px)';
+    placeCaretLine();
   }
 
   // Brings a match in the text into view and draws it as the current one. A
@@ -1334,6 +1355,10 @@ var __jsontreeMain = function () {
 
   editArea.addEventListener('input', validateEditBuffer);
   editArea.addEventListener('scroll', () => placeEditLines(false));
+  // The caret moves without the text or the scroll position changing.
+  document.addEventListener('selectionchange', () => {
+    if (appEl.classList.contains('editing')) placeCaretLine();
+  });
   // A taller window shows lines that were never drawn.
   window.addEventListener('resize', () => {
     if (appEl.classList.contains('editing')) placeEditLines(false);

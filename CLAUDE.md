@@ -18,7 +18,7 @@ changing behaviour, and update it when behaviour changes.**
 npm install                      # once
 npx playwright install chromium  # once
 
-npm test                         # build the extension, then run all 71 tests
+npm test                         # build the extension, then run all 73 tests
 npm run build:extension          # copy the app into extension/vendor/
 
 npx http-server . -p 8080 -c-1   # serve locally at http://localhost:8080

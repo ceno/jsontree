@@ -70,10 +70,12 @@
 
       <!-- The text is drawn twice: the textarea takes the typing but its
            glyphs are transparent, and the coloured copy behind it is what
-           shows. Behind that again, search paints its matches. -->
+           shows. Behind that again, search paints its matches, and behind
+           everything lies the band on the caret's line. -->
       <div id="edit-wrap">
-        <div id="edit-gutter" aria-hidden="true"><div id="edit-gutter-inner"><div id="edit-line-numbers"></div></div></div>
+        <div id="edit-gutter" aria-hidden="true"><div id="edit-gutter-inner"><div id="edit-line-numbers"></div><div id="edit-current-number"></div></div></div>
         <div id="edit-code">
+          <div id="edit-current-line" aria-hidden="true"></div>
           <div id="edit-marks" aria-hidden="true"></div>
           <div id="edit-highlight" aria-hidden="true"></div>
           <textarea id="edit-area" spellcheck="false" autocomplete="off"

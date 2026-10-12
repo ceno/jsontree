@@ -10,8 +10,8 @@ Runs entirely in the browser; nothing you paste is sent anywhere.
   match count, revealing matches buried in collapsed subtrees
 - A status bar that always shows validity, size and the selected node's path
   (`results[1].author.orcid`), click to copy
-- Source editor with line numbers, syntax colouring and precise line/column
-  error reporting — no modal dialogs
+- Source editor with line numbers, syntax colouring, the current line picked
+  out, and precise line/column error reporting — no modal dialogs
 - Copy the selected node or its path; Format and Minify in the editor
 - Light and dark, following the system appearance, with a switch in the toolbar
 
