@@ -884,6 +884,10 @@ var __jsontreeMain = function () {
   function enterEdit(text) {
     editArea.value = text === undefined ? rawText : text;
     appEl.classList.add('editing');
+    // The button is the way back out, so it says what it will do, not where
+    // you are.
+    btnEdit.textContent = 'Done';
+    btnEdit.title = 'Finish editing';
     btnEdit.classList.add('on');
     if (findOpen) closeFind();
     editArea.focus();
@@ -906,6 +910,8 @@ var __jsontreeMain = function () {
       return false;
     }
     appEl.classList.remove('editing');
+    btnEdit.textContent = 'Edit';
+    btnEdit.title = 'Edit the source';
     btnEdit.classList.remove('on');
     clearEditError();
     loadParsed(res.data, { trulyEmpty: !!res.trulyEmpty });

@@ -560,3 +560,38 @@ test('39. the status bar counts and units read correctly', async ({ page }) => {
     JSON.stringify({ blob: 'x'.repeat(2 * 1024 * 1024) })));
   await expect(page.locator('#status-left')).toContainText(' MB · ');
 });
+
+// The Edit button is the only way back out of the editor, so it has to say so.
+test('40. the Edit button becomes Done while editing', async ({ page }) => {
+  await load(page);
+  await expect(page.locator('#btn-edit')).toHaveText('Edit');
+
+  await page.locator('#btn-edit').click();
+  await expect(page.locator('#btn-edit')).toHaveText('Done');
+  await expect(page.locator('#btn-edit')).toHaveClass(/on/);
+
+  await page.locator('#btn-edit').click();
+  await expect(page.locator('#btn-edit')).toHaveText('Edit');
+  await expect(page.locator('#btn-edit')).not.toHaveClass(/on/);
+});
+
+// It must not get stuck on "Done" when the editor refuses to close.
+test('41. the Edit button stays Done while the JSON is invalid', async ({ page }) => {
+  await load(page);
+  await type(page, '{"a":');
+  await page.locator('#btn-edit').click();          // refused
+  await expect(page.locator('#edit-area')).toBeVisible();
+  await expect(page.locator('#btn-edit')).toHaveText('Done');
+
+  await page.locator('#edit-area').fill('{"a":1}');
+  await page.locator('#btn-edit').click();
+  await expect(page.locator('#btn-edit')).toHaveText('Edit');
+});
+
+// The same entry point the extension uses must leave the button consistent.
+test('42. loading unparseable text leaves the button reading Done', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => window.jsontree.load('{"a":'));
+  await expect(page.locator('#edit-area')).toBeVisible();
+  await expect(page.locator('#btn-edit')).toHaveText('Done');
+});
