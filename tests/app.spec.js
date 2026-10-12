@@ -56,7 +56,7 @@ test('1. opens empty in the source editor, ready for a paste', async ({ page }) 
   await expect(page.locator('#tree-container .tree-row')).toHaveCount(0);
   await expect(page.locator('#status-left')).toHaveText('Empty · 0 B · 0 lines');
   await expect(page.locator('#status-left')).not.toHaveClass(/error/);
-  await expect(page.locator('#status-path')).toHaveText('⌘K Commands · ⌘F Find');
+  await expect(page.locator('#status-path')).toHaveText('⌘F Find');
 });
 
 // What the extension does: the app boots empty, in the editor, and is then
@@ -226,35 +226,6 @@ test('11. Escape closes find and removes every highlight', async ({ page }) => {
 });
 
 // ----------------------------------------------------------------
-// Command palette
-// ----------------------------------------------------------------
-test('12. the palette opens on ⌘K and filters fuzzily', async ({ page }) => {
-  await load(page);
-  await page.keyboard.press('Meta+k');
-  await expect(page.locator('#palette-overlay')).toHaveClass(/open/);
-
-  await page.locator('#palette-input').fill('coll');
-  await expect(page.locator('.palette-item').first()).toContainText('Collapse All');
-  await expect(page.locator('.palette-item', { hasText: 'Format' })).toHaveCount(0);
-
-  await page.keyboard.press('Escape');
-  await expect(page.locator('#palette-overlay')).not.toHaveClass(/open/);
-});
-
-test('13. a palette command runs against the document', async ({ page }) => {
-  await load(page);
-  await expand(page, 'address');
-  await expect(page.locator('.tree-row[data-path="address.city"]')).toBeVisible();
-
-  await page.keyboard.press('Meta+k');
-  await page.locator('#palette-input').fill('collapse');
-  await page.keyboard.press('Enter');
-
-  await expect(page.locator('#palette-overlay')).not.toHaveClass(/open/);
-  await expect(page.locator('.tree-row[data-path="address.city"]')).toBeHidden();
-});
-
-// ----------------------------------------------------------------
 // Toolbar actions
 // ----------------------------------------------------------------
 test('14. Copy puts the pretty-printed document on the clipboard', async ({ page, context }) => {
@@ -277,23 +248,10 @@ test('15. Minify rewrites the source in place and leaves the clipboard alone', a
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('SENTINEL');
 });
 
-test('16. Copy Selection copies just the selected subtree', async ({ page, context }) => {
-  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+test('17. emptying the source and leaving the editor returns to the empty state', async ({ page }) => {
   await load(page);
-  await page.locator('.tree-row[data-path="address"]').click();
-  await page.keyboard.press('Meta+k');
-  await page.locator('#palette-input').fill('copy selection');
-  await page.keyboard.press('Enter');
-
-  const text = await page.evaluate(() => navigator.clipboard.readText());
-  expect(JSON.parse(text).city).toBe('Springfield');
-});
-
-test('17. Clear empties the document and returns to the empty state', async ({ page }) => {
-  await load(page);
-  await page.keyboard.press('Meta+k');
-  await page.locator('#palette-input').fill('clear');
-  await page.keyboard.press('Enter');
+  await type(page, '');
+  await page.locator('#btn-edit').click();   // leave the editor
 
   await expect(page.locator('#app')).toHaveClass(/empty/);
   await expect(page.locator('#tree-container .tree-row')).toHaveCount(0);
@@ -331,8 +289,9 @@ test('20. invalid JSON reports a real line and column, with no modal', async ({ 
   await expect(page.locator('#status-left')).toHaveClass(/error/);
   await expect(page.locator('#status-left')).toHaveText('Invalid JSON — line 3, column 3: expected "," or "}"');
   await expect(page.locator('.edit-error-marker')).toHaveCount(1);
-  // Nothing modal: the document stays reachable behind the message.
-  await expect(page.locator('#palette-overlay')).not.toHaveClass(/open/);
+  // Nothing modal: the text stays in reach, with the caret still in it.
+  await expect(page.locator('dialog, [role="dialog"]')).toHaveCount(0);
+  await expect(page.locator('#edit-area')).toBeFocused();
 });
 
 // Truncated JSON is the case a message-scraping parser gets wrong: V8 reports
@@ -421,31 +380,6 @@ test('24. an explicit theme overrides the OS preference in both directions', asy
 // Regressions found by QA against commit 3660872
 // ----------------------------------------------------------------
 
-// D1: focus was left in the hidden palette input, so the window keydown
-// handler treated every arrow key as typing and tree navigation went dead.
-test('25. closing the palette hands focus back and arrows still work', async ({ page }) => {
-  await load(page);
-  await page.keyboard.press('Meta+k');
-  await page.keyboard.press('Escape');
-  expect(await page.evaluate(() => document.activeElement.id)).not.toBe('palette-input');
-
-  await page.keyboard.press('ArrowDown');
-  await expect(page.locator('.tree-row.selected')).toHaveCount(1);
-});
-
-// D1: Escape inside the palette bubbled to the window handler, which saw a
-// closed palette and went on to close the find bar underneath it.
-test('26. Escape in the palette does not also close the find bar', async ({ page }) => {
-  await load(page);
-  await page.keyboard.press('Meta+f');
-  await page.locator('#find-input').fill('name');
-  await page.keyboard.press('Meta+k');
-  await page.keyboard.press('Escape');
-
-  await expect(page.locator('#findbar')).toHaveClass(/open/);
-  await expect(page.locator('#find-input')).toHaveValue('name');
-});
-
 // D2: restoreStatus() stripped the error class, so a transient expired and
 // brought the error text back in neutral grey.
 test('27. a transient message does not downgrade a standing error', async ({ page }) => {
@@ -481,18 +415,17 @@ test('29. loading unparseable text opens the editor at the top', async ({ page }
 });
 
 // D6: an unparseable paste flashed an error over the unchanged document and
-// the pasted text was unreachable. Over the tree, Paste is a palette command —
-// its button belongs to the editor.
-test('30. pasting unparseable text opens it in the editor', async ({ page, context }) => {
+// the pasted text was unreachable. Paste only exists in the editor now, so the
+// text lands in front of the reader with the error beside it.
+test('30. pasting unparseable text keeps it in the editor with the error', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await load(page);
   await page.evaluate(() => navigator.clipboard.writeText('not json at all'));
-  await page.keyboard.press('Meta+k');
-  await page.locator('#palette-input').fill('paste');
-  await page.keyboard.press('Enter');
+  await page.locator('#btn-edit').click();
+  await page.locator('#btn-paste').click();
 
-  await expect(page.locator('#edit-area')).toBeVisible();
   await expect(page.locator('#edit-area')).toHaveValue('not json at all');
+  await expect(page.locator('#edit-highlight')).toHaveText('not json at all');
   await expect(page.locator('#status-left')).toHaveClass(/error/);
 });
 
@@ -564,8 +497,8 @@ test('35. the closed find bar takes no vertical space', async ({ page }) => {
   expect(await page.locator('#findbar').evaluate(el => el.getBoundingClientRect().height)).toBe(34);
 });
 
-// D9: the toolbar had no give, so the find and palette buttons were pushed
-// off the right-hand edge on a narrow window.
+// D9: the toolbar had no give, so the find button was pushed off the
+// right-hand edge on a narrow window.
 test('36. the toolbar keeps every control reachable when narrow', async ({ page }) => {
   await load(page);
   // Once over the tree and once in the editor: each brings its own buttons.
@@ -576,7 +509,7 @@ test('36. the toolbar keeps every control reachable when narrow', async ({ page 
       const overflow = await page.locator('#toolbar').evaluate(
         el => el.scrollWidth - el.clientWidth);
       expect(overflow, `toolbar overflows at ${width}px (${mode})`).toBeLessThanOrEqual(0);
-      for (const id of ['btn-find-open', 'btn-palette-open', 'btn-edit']) {
+      for (const id of ['btn-find-open', 'btn-edit']) {
         const box = await page.locator('#' + id).boundingBox();
         expect(box.x + box.width, `${id} off-screen at ${width}px (${mode})`).toBeLessThanOrEqual(width);
       }
@@ -587,16 +520,6 @@ test('36. the toolbar keeps every control reachable when narrow', async ({ page 
       expect(squeezed, `labels squeezed at ${width}px (${mode})`).toEqual([]);
     }
   }
-});
-
-// D14: Tab moved focus out of the palette and Escape then did nothing.
-test('37. Escape closes the palette even after Tab moves focus out', async ({ page }) => {
-  await load(page);
-  await page.keyboard.press('Meta+k');
-  await page.keyboard.press('Tab');
-  await page.keyboard.press('Tab');
-  await page.keyboard.press('Escape');
-  await expect(page.locator('#palette-overlay')).not.toHaveClass(/open/);
 });
 
 // QA question 9: the CSS honours reduced motion but the JS slide did not.
@@ -685,24 +608,6 @@ test('42. loading unparseable text leaves the button reading View', async ({ pag
   await expect(page.locator('#btn-edit')).toHaveText('View');
 });
 
-// The palette toggles the editor too, so the label has to follow that route.
-test('43. the palette Edit Source command also flips the label', async ({ page }) => {
-  await load(page);
-  await page.keyboard.press('Meta+k');
-  await page.locator('#palette-input').fill('edit source');
-  await page.keyboard.press('Enter');
-
-  await expect(page.locator('#edit-area')).toBeVisible();
-  await expect(page.locator('#btn-edit')).toHaveText('View');
-  await expect(page.locator('#btn-edit')).toHaveAttribute('title', 'View the tree');
-
-  await page.keyboard.press('Meta+k');
-  await page.locator('#palette-input').fill('edit source');
-  await page.keyboard.press('Enter');
-  await expect(page.locator('#btn-edit')).toHaveText('Edit');
-  await expect(page.locator('#btn-edit')).toHaveAttribute('title', 'Edit the source');
-});
-
 // ----------------------------------------------------------------
 // The toolbar's two sets of actions
 // ----------------------------------------------------------------
@@ -715,6 +620,8 @@ const EDITOR_ACTIONS = ['View', 'Copy', 'Paste', 'Format', 'Minify'];
 test('44. the toolbar shows the tree\'s actions over the tree and the editor\'s while editing', async ({ page }) => {
   await page.goto('/');
   expect(await toolbarLabels(page)).toEqual(EDITOR_ACTIONS);    // opens in the editor
+  // Find is the only icon on the right, in either view.
+  await expect(page.locator('#toolbar .tb-icon-btn')).toHaveCount(1);
 
   await page.evaluate((t) => window.jsontree.load(t), SAMPLE);
   expect(await toolbarLabels(page)).toEqual(TREE_ACTIONS);
@@ -779,22 +686,6 @@ test('48. Paste in the editor replaces the text with the clipboard', async ({ pa
 
   await page.locator('#btn-edit').click();
   await expect(page.locator('.tree-row[data-path="pasted"]')).toBeVisible();
-});
-
-// Over the tree there is no text to rewrite, so the palette's Format and Minify
-// open the editor on the result instead of doing nothing visible.
-test('49. Minify from the palette over the tree opens the editor on the result', async ({ page, context }) => {
-  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  await load(page, '{\n  "b": 2,\n  "a": 1\n}');
-  await page.evaluate(() => navigator.clipboard.writeText('SENTINEL'));
-  await page.keyboard.press('Meta+k');
-  await page.locator('#palette-input').fill('minify');
-  await page.keyboard.press('Enter');
-
-  await expect(page.locator('#edit-area')).toBeVisible();
-  await expect(page.locator('#edit-area')).toHaveValue('{"b":2,"a":1}');
-  await expect(page.locator('#btn-edit')).toHaveText('View');
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('SENTINEL');
 });
 
 // ----------------------------------------------------------------
@@ -865,7 +756,8 @@ const lineNumbers = (page) =>
   page.locator('#edit-line-numbers').evaluate(el => el.textContent.split('\n'));
 const drawnText = (page) => page.locator('#edit-highlight').evaluate(el => el.textContent);
 
-test('53. the editor numbers every line and keeps up as the text changes', async ({ page }) => {
+test('53. the editor numbers every line and keeps up as the text changes', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto('/');
   expect(await lineNumbers(page)).toEqual(['1']);          // an empty editor still has a first line
 
@@ -874,7 +766,7 @@ test('53. the editor numbers every line and keeps up as the text changes', async
   await page.locator('#edit-area').fill('{"a":1,"b":[1,2]}');
   expect(await lineNumbers(page)).toEqual(['1']);
 
-  // Format, Minify and Clear rewrite the text without the reader typing, and
+  // Format, Minify and Paste rewrite the text without the reader typing, and
   // the numbers and the coloured copy have to follow those too.
   await page.locator('#btn-format').click();
   expect(await lineNumbers(page)).toEqual(['1', '2', '3', '4', '5', '6', '7']);
@@ -884,11 +776,11 @@ test('53. the editor numbers every line and keeps up as the text changes', async
   expect(await lineNumbers(page)).toEqual(['1']);
   expect(await drawnText(page)).toBe('{"a":1,"b":[1,2]}');
 
-  await page.keyboard.press('Meta+k');
-  await page.locator('#palette-input').fill('clear');
-  await page.keyboard.press('Enter');
-  await expect(page.locator('#edit-area')).toHaveValue('');
-  expect(await drawnText(page)).toBe('');
+  await page.evaluate(() => navigator.clipboard.writeText('[\n  true\n]'));
+  await page.locator('#btn-paste').click();
+  await expect(page.locator('#edit-area')).toHaveValue('[\n  true\n]');
+  expect(await lineNumbers(page)).toEqual(['1', '2', '3']);
+  expect(await drawnText(page)).toBe('[\n  true\n]');
 });
 
 test('54. values are coloured by type; keys and punctuation are not', async ({ page }) => {

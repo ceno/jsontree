@@ -2,9 +2,9 @@
 
 A static, zero-dependency JSON viewer and formatter that is meant to read as a
 native macOS utility rather than a web page: one window with a unified toolbar,
-a find bar summoned with ⌘F, a ⌘K command palette, a single content area
-holding the tree / empty state / source editor, and one status bar whose height
-never changes between states. It is vanilla HTML/CSS/JS with no build step and
+a find bar summoned with ⌘F, a single content area holding the tree / empty
+state / source editor, and one status bar whose height never changes between
+states. It is vanilla HTML/CSS/JS with no build step and
 no framework — `index.html`, `css/style.css` and `js/app.js` at the repo root
 are the whole app, served straight from GitHub Pages. The same three files are
 also copied into `extension/vendor/` to ship as a Chrome extension that takes
@@ -18,7 +18,7 @@ changing behaviour, and update it when behaviour changes.**
 npm install                      # once
 npx playwright install chromium  # once
 
-npm test                         # build the extension, then run all 70 tests
+npm test                         # build the extension, then run all 62 tests
 npm run build:extension          # copy the app into extension/vendor/
 
 npx http-server . -p 8080 -c-1   # serve locally at http://localhost:8080

@@ -8,12 +8,11 @@ Runs entirely in the browser; nothing you paste is sent anywhere.
 - Interactive tree viewer with expand/collapse and full keyboard navigation
 - Find bar on ⌘F — incremental, with a match count, revealing matches buried
   in collapsed subtrees
-- Command palette on ⌘K with fuzzy filtering
 - A status bar that always shows validity, size and the selected node's path
   (`results[1].author.orcid`), click to copy
 - Source editor with line numbers, syntax colouring and precise line/column
   error reporting — no modal dialogs
-- Format, Minify, Copy, Paste and Clear
+- Format, Minify, Copy and Paste
 - Light and dark, following the system appearance
 
 ## Keyboard
@@ -21,7 +20,6 @@ Runs entirely in the browser; nothing you paste is sent anywhere.
 | | |
 |---|---|
 | `⌘F` | Find · `⌘G` / `⇧⌘G` next and previous · `Esc` closes |
-| `⌘K` | Command palette |
 | `↑` `↓` | Move through the tree |
 | `←` `→` | Collapse / expand, or step out and in |
 | `⌘⌥←` `⌘⌥→` | Collapse all / expand all |

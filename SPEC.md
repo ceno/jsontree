@@ -5,8 +5,8 @@ Chrome extension. Vanilla HTML/CSS/JS: no build step, no framework, no external
 assets, no network at runtime.
 
 The product goal is that it reads as a **native macOS utility** rather than a web
-page — one window, no modal screens, a summoned find bar, a command palette, and
-chrome that never changes size as you work.
+page — one window, no modal screens, a summoned find bar, and chrome that never
+changes size as you work.
 
 ## Files
 
@@ -24,7 +24,6 @@ chrome that never changes size as you work.
   #findbar       0px closed, 34px open
   #content-wrap  the tree, the empty state, or the source editor
   #statusbar     24px, fixed
-#palette-overlay
 ```
 
 The toolbar and status bar are the same height in every state. Opening the find
@@ -41,13 +40,14 @@ What the app opens on depends on whether it has a document:
   tree. The editor is never shown on the way.
 
 The empty state (`No document`) is no longer where the app starts. It is what
-leaving the editor with nothing in it, or Clear over the tree, shows.
+leaving the editor with nothing in it shows — which is also how a document is
+cleared: empty the source, then `View`.
 
 ### Toolbar
 
-Left to right: wordmark · mode switch · actions · spacer · find icon · palette
-icon. The actions are flat macOS toolbar buttons, 12.5px, rounded hover fill.
-The find and palette icons take an accent fill while their surface is open.
+Left to right: wordmark · mode switch · actions · spacer · find icon. The
+actions are flat macOS toolbar buttons, 12.5px, rounded hover fill. The find
+icon takes an accent fill while the find bar is open.
 
 The mode switch is the one button that moves between the tree and the source
 editor. It sits directly beside the wordmark, ahead of the actions, because it
@@ -70,8 +70,11 @@ ever visible:
 
 `Copy` is first in both and does not move when the set changes. It copies the
 whole document — pretty-printed over the tree, exactly as typed in the editor.
-`Paste`, `Format` and `Minify` act on the editor's text, so they have no button
-anywhere else.
+`Paste`, `Format` and `Minify` act on the editor's text, so they exist nowhere
+else.
+
+Every action is a toolbar button. There is no command palette or menu behind
+them, so an action with no button in the current view does not exist there.
 
 ### Tree
 
@@ -92,7 +95,7 @@ source-list selection in the system accent.
   it.
 - Array children are keyed by index.
 - Every row carries `data-path` — `results[1].author.orcid` — which the status
-  bar displays and the Copy Path command copies. A key is written with a dot
+  bar displays and Copy Path copies. A key is written with a dot
   only when it cannot be mistaken for anything else; otherwise it is
   bracket-quoted, so the key `a.b` is `["a.b"]` and stays distinct from a
   nested `a` → `b`. Paths are therefore unique across the document. The root's
@@ -106,7 +109,7 @@ selected row's path. Selection always wins over the preview — moving by
 keyboard fires no `mouseleave`, so without that the bar would keep showing
 whatever the pointer happened to be resting on. Copy Path copies the selected
 row, falling back to the hovered one only when nothing is selected. Nothing is selected on load, so the status bar can show
-the `⌘K Commands · ⌘F Find` hint until the reader picks a node.
+the `⌘F Find` hint until the reader picks a node.
 
 ### Find bar
 
@@ -118,18 +121,6 @@ re-searches node labels, wraps each hit in `mark.find-match`, and reports
 `N of M`. Moving to a match expands its ancestors, selects the row and scrolls
 it into view. ⌘G / ⇧⌘G and the chevrons cycle with wraparound. Escape or `Done`
 closes and removes every highlight, restoring label text exactly.
-
-### Command palette
-
-⌘K opens a centred, blurred sheet with a fuzzy subsequence filter scored so
-earlier, tighter runs rank first. Commands: Format, Minify, Copy All, Copy
-Selection, Copy Path, Paste, Clear, Edit Source, Find, Expand All, Collapse All,
-About jsontree. Arrow keys move, Enter runs, Escape closes.
-
-The actions that suit the current view are also plain toolbar buttons — the
-palette is the power path, not the only path. It lists every command in both
-views. Paste over the tree replaces the document. Format and Minify over the
-tree, where there is no text to rewrite, open the editor on the result.
 
 ### Status bar
 
@@ -225,7 +216,7 @@ chromium. `tests/app.spec.js` covers the shell (opening in the editor when
 empty and on the tree when handed a document, the empty state, constant chrome
 heights), the tree (labels, type icons, container counts, expand/collapse,
 connector columns, paths, arrow navigation), find (highlighting, counting, revealing, cycling, cleanup), the
-palette (fuzzy filter, running a command), the toolbar (which actions show in
+toolbar (which actions show in
 which view, each of them against the document and the clipboard, and that
 Format and Minify leave the clipboard alone), the editor (round-trip, refusing
 to close while invalid, line numbers, colouring by type, the coloured copy

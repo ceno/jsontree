@@ -39,7 +39,7 @@
   --bg-window: #ececee;     /* chrome behind the app */
   --bg-sidebar: #f5f5f7;    /* tree source-list tint, find bar, status bar */
   --bg-content: #ffffff;    /* editor surface */
-  --bg-elevated: #ffffff;   /* raised surfaces: command palette */
+  --bg-elevated: #ffffff;   /* raised surfaces: the mode switch */
   --bg-toolbar: rgba(246, 246, 248, 0.82);
 
   --text-primary: #1d1d1f;
@@ -55,7 +55,6 @@
   --connector: rgba(0, 0, 0, 0.1);
 
   --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.08), 0 1px 1px rgba(0, 0, 0, 0.05);
-  --shadow-sheet: 0 24px 60px rgba(0, 0, 0, 0.28), 0 4px 14px rgba(0, 0, 0, 0.12);
   --focus-ring: rgba(10, 132, 255, 0.38);
 
   --danger: #ff3b30;
@@ -68,12 +67,10 @@
 
   --mark-bg: rgba(255, 204, 0, 0.45);
   --mark-current-bg: rgba(255, 149, 0, 0.75);
-  --scrim: rgba(0, 0, 0, 0.22);
   /* The accent is the same blue in both themes, so these "on accent"
      tones need no dark redefinition — but they stay tokens, not
      literals, so every component colour traces back to :root. */
   --on-accent-dim: rgba(255, 255, 255, 0.75);
-  --on-accent-fill: rgba(255, 255, 255, 0.22);
   --on-accent-icon: rgba(255, 255, 255, 0.92);
   --on-accent-guide: rgba(255, 255, 255, 0.35);
 
@@ -105,7 +102,6 @@
     --connector: rgba(255, 255, 255, 0.12);
   
     --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 1px rgba(0, 0, 0, 0.3);
-    --shadow-sheet: 0 24px 60px rgba(0, 0, 0, 0.55), 0 4px 14px rgba(0, 0, 0, 0.35);
     --focus-ring: rgba(58, 160, 255, 0.45);
   
     --danger: #ff453a;
@@ -144,7 +140,6 @@
   --connector: rgba(255, 255, 255, 0.12);
 
   --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 1px rgba(0, 0, 0, 0.3);
-  --shadow-sheet: 0 24px 60px rgba(0, 0, 0, 0.55), 0 4px 14px rgba(0, 0, 0, 0.35);
   --focus-ring: rgba(58, 160, 255, 0.45);
 
   --danger: #ff453a;
@@ -269,8 +264,8 @@ button {
 }
 
 /* Narrow windows: give up the wordmark, then the separators and some padding,
-   so the find and palette buttons stay reachable instead of being pushed off
-   the right-hand edge. The icon buttons never shrink. */
+   so the find button stays reachable instead of being pushed off the
+   right-hand edge. The icon button never shrinks. */
 @media (max-width: 620px) {
   .brand-name { display: none; }
   .tb-sep { margin: 0 3px; }
@@ -890,90 +885,3 @@ mark.find-match.current {
 #status-path.has-path { cursor: pointer; color: var(--text-primary); }
 #status-path.has-path:hover { background: var(--control-fill); }
 #status-path.hint { color: var(--text-tertiary); }
-
-/* ============================================================
-   Command palette
-   ============================================================ */
-#palette-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  background: var(--scrim);
-  -webkit-backdrop-filter: blur(3px);
-  backdrop-filter: blur(3px);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 14vh;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.12s ease;
-}
-
-#palette-overlay.open { opacity: 1; pointer-events: auto; }
-
-#palette {
-  width: 440px;
-  max-width: 90vw;
-  max-height: 60vh;
-  background: var(--bg-elevated);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  backdrop-filter: blur(24px) saturate(180%);
-  border: 0.5px solid var(--hairline-strong);
-  border-radius: 12px;
-  box-shadow: var(--shadow-sheet);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  transform: scale(0.97) translateY(-6px);
-  transition: transform 0.12s ease;
-}
-
-#palette-overlay.open #palette { transform: scale(1) translateY(0); }
-
-@media (prefers-reduced-motion: reduce) {
-  #palette-overlay, #palette { transition: none; }
-}
-
-#palette-input {
-  border: none;
-  outline: none;
-  background: transparent;
-  font-size: 14px;
-  color: var(--text-primary);
-  padding: 13px 16px;
-  border-bottom: 1px solid var(--hairline);
-}
-
-#palette-input::placeholder { color: var(--text-tertiary); }
-
-#palette-list { overflow-y: auto; padding: 6px; }
-
-.palette-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 7px 10px;
-  border-radius: 7px;
-  font-size: 12.5px;
-  color: var(--text-primary);
-  cursor: pointer;
-}
-
-.palette-item.active { background: var(--accent); color: var(--text-on-accent); }
-.palette-item .p-hint { color: var(--text-tertiary); font-size: 11.5px; }
-.palette-item.active .p-hint { color: var(--on-accent-dim); }
-
-.palette-item .p-shortcut {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-tertiary);
-  background: var(--control-fill);
-  padding: 1px 6px;
-  border-radius: 4px;
-  white-space: nowrap;
-}
-
-.palette-item.active .p-shortcut { background: var(--on-accent-fill); color: var(--text-on-accent); }
-.palette-empty { padding: 16px; text-align: center; color: var(--text-tertiary); font-size: 12.5px; }

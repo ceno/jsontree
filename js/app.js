@@ -1,8 +1,8 @@
 /* jsontree — app.js
  *
  * One window, no modes-as-tabs: a unified toolbar, a find bar summoned with
- * ⌘F, a command palette on ⌘K, and a status bar that is the same height in
- * every state. The tree keeps the previous release's layout.
+ * ⌘F, and a status bar that is the same height in every state. The tree keeps
+ * the previous release's layout.
  */
 var __jsontreeMain = function () {
   'use strict';
@@ -24,7 +24,6 @@ var __jsontreeMain = function () {
   const btnEdit        = document.getElementById('btn-edit');
   const btnEditLabel   = document.getElementById('btn-edit-label');
   const btnFindOpen    = document.getElementById('btn-find-open');
-  const btnPaletteOpen = document.getElementById('btn-palette-open');
 
   const findbar   = document.getElementById('findbar');
   const findInput = document.getElementById('find-input');
@@ -43,14 +42,10 @@ var __jsontreeMain = function () {
   const statusLeft = document.getElementById('status-left');
   const statusPath = document.getElementById('status-path');
 
-  const paletteOverlay = document.getElementById('palette-overlay');
-  const paletteInput   = document.getElementById('palette-input');
-  const paletteList    = document.getElementById('palette-list');
-
   const EDIT_LINE_HEIGHT = 20;            // px; must track the editor's line-height in style.css
   const EDIT_OVERSCAN = 40;               // lines drawn beyond each edge of the editor
   const HIGHLIGHT_LIMIT = 100000;         // characters; more than this on screen is not coloured
-  const PATH_HINT = '⌘K Commands · ⌘F Find';
+  const PATH_HINT = '⌘F Find';
 
   // ----------------------------------------------------------------
   // State
@@ -596,7 +591,7 @@ var __jsontreeMain = function () {
   const nodeAnimMap = new WeakMap();
   const ANIM_DURATION = 250;
 
-  // The find bar and palette honour this in CSS; the expand/collapse slide is
+  // The find bar honours this in CSS; the expand/collapse slide is
   // driven here, so it has to ask as well.
   const reducedMotion = window.matchMedia
     ? window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -907,20 +902,10 @@ var __jsontreeMain = function () {
       buildTree(data);
       // Nothing is selected on load: the root's "selection" would paint a bar
       // across the top conveying nothing, and the status bar is more useful
-      // showing the ⌘K / ⌘F hint until the reader picks a node.
+      // showing the ⌘F hint until the reader picks a node.
     }
     setPath(selectedRow ? selectedRow._nodeData.path : null);
     restoreStatus();
-  }
-
-  function loadText(text) {
-    const res = tryParse(text);
-    if (!res.ok) {
-      showError(res.message);
-      return false;
-    }
-    loadParsed(res.data, { trulyEmpty: !!res.trulyEmpty });
-    return true;
   }
 
   // ----------------------------------------------------------------
@@ -1140,20 +1125,14 @@ var __jsontreeMain = function () {
   }
 
   // Format and Minify rewrite the text in the editor and nothing else — putting
-  // it on the clipboard is Copy's job. Their buttons only exist in the editor;
-  // run from the palette over the tree, where there is no text to rewrite, they
-  // open the editor on the result.
+  // it on the clipboard is Copy's job. Like Paste, they exist only in the
+  // editor: over the tree there is no text to rewrite.
   function rewriteSource(indent, done, nothing) {
-    const res = tryParse(currentSource());
+    const res = tryParse(editArea.value);
     if (!res.ok) { showError(res.message); return; }
     if (res.trulyEmpty) { showStatus(nothing); return; }
-    const text = JSON.stringify(res.data, null, indent);
-    if (appEl.classList.contains('editing')) {
-      editArea.value = text;
-      refreshEditor();
-    } else {
-      enterEdit(text);
-    }
+    editArea.value = JSON.stringify(res.data, null, indent);
+    refreshEditor();
     showStatus(done);
   }
 
@@ -1169,13 +1148,6 @@ var __jsontreeMain = function () {
     showStatus('Copied');
   }
 
-  function doCopySelection() {
-    if (!selectedRow) { showStatus('Nothing selected'); return; }
-    const nd = selectedRow._nodeData;
-    copyText(nd.isContainer ? JSON.stringify(nd.value, null, 2) : formatLeafValue(nd.value));
-    showStatus('Copied value');
-  }
-
   function doCopyPath() { copyPath(activePath()); }
 
   function doPaste() {
@@ -1184,35 +1156,14 @@ var __jsontreeMain = function () {
       return;
     }
     navigator.clipboard.readText().then((text) => {
-      if (appEl.classList.contains('editing')) {
-        editArea.value = text;
-        validateEditBuffer();
-        return;
-      }
-      if (loadText(text)) {
-        showStatus('Pasted');
-      } else {
-        // loadText has already put the parse error in the status bar; open the
-        // editor on the text so it is reachable rather than lost.
-        enterEdit(text);
-      }
+      // The clipboard answers late, after a permission prompt at worst, and
+      // the reader may have left the editor by then.
+      if (!appEl.classList.contains('editing')) return;
+      editArea.value = text;
+      validateEditBuffer();
     }).catch(() => {
       showError('Clipboard access denied — press ⌘V in the editor instead.');
     });
-  }
-
-  function doClear() {
-    if (appEl.classList.contains('editing')) {
-      editArea.value = '';
-      validateEditBuffer();
-      return;
-    }
-    loadParsed(null, { trulyEmpty: true });
-    showStatus('Cleared');
-  }
-
-  function doAbout() {
-    showStatus('jsontree — runs entirely in your browser; nothing you paste is sent anywhere.');
   }
 
   btnCopy.addEventListener('click', doCopyAll);
@@ -1224,165 +1175,12 @@ var __jsontreeMain = function () {
   btnMinify.addEventListener('click', doMinify);
 
   // ----------------------------------------------------------------
-  // Command palette
-  // ----------------------------------------------------------------
-  const actions = [
-    { id: 'format',        label: 'Format',         hint: 'Re-indent with two spaces', run: doFormat },
-    { id: 'minify',        label: 'Minify',         hint: 'Remove all whitespace',     run: doMinify },
-    { id: 'copyAll',       label: 'Copy All',       hint: 'Copy the whole document',   run: doCopyAll },
-    { id: 'copySelection', label: 'Copy Selection', hint: 'Copy the selected value',   run: doCopySelection },
-    { id: 'copyPath',      label: 'Copy Path',      hint: 'Copy the selected path',    shortcut: '⌘⌥C', run: doCopyPath },
-    { id: 'paste',         label: 'Paste',          hint: 'Replace with clipboard JSON', run: doPaste },
-    { id: 'clear',         label: 'Clear',          hint: 'Empty the document',        run: doClear },
-    { id: 'edit',          label: 'Edit Source',    hint: 'Toggle the source editor',  run: () => btnEdit.click() },
-    { id: 'find',          label: 'Find',           shortcut: '⌘F',               run: () => setTimeout(openFind, 0) },
-    { id: 'expandAll',     label: 'Expand All',     shortcut: '⌘⌥→',    run: expandAll },
-    { id: 'collapseAll',   label: 'Collapse All',   shortcut: '⌘⌥←',    run: collapseAll },
-    { id: 'about',         label: 'About jsontree', run: doAbout }
-  ];
-
-  let paletteActive = -1;
-  let paletteFiltered = [];
-
-  // Subsequence match, scored so that earlier and tighter runs win.
-  function fuzzyScore(query, text) {
-    const q = query.toLowerCase();
-    const t = text.toLowerCase();
-    if (!q) return 0;
-    let qi = 0, score = 0, lastHit = -1;
-    for (let ti = 0; ti < t.length && qi < q.length; ti++) {
-      if (t[ti] === q[qi]) {
-        score -= ti - lastHit;
-        lastHit = ti;
-        qi++;
-      }
-    }
-    return qi === q.length ? score : null;
-  }
-
-  function renderPalette() {
-    const query = paletteInput.value.trim();
-    paletteFiltered = actions
-      .map(a => ({ action: a, score: fuzzyScore(query, a.label) }))
-      .filter(x => x.score !== null)
-      .sort((a, b) => b.score - a.score)
-      .map(x => x.action);
-
-    paletteList.innerHTML = '';
-    if (!paletteFiltered.length) {
-      const empty = document.createElement('div');
-      empty.className = 'palette-empty';
-      empty.textContent = 'No matching command';
-      paletteList.appendChild(empty);
-      paletteActive = -1;
-      return;
-    }
-
-    paletteFiltered.forEach((a, i) => {
-      const item = document.createElement('div');
-      item.className = 'palette-item';
-      item.setAttribute('role', 'option');
-
-      const label = document.createElement('span');
-      label.textContent = a.label;
-      item.appendChild(label);
-
-      if (a.shortcut) {
-        const sc = document.createElement('span');
-        sc.className = 'p-shortcut';
-        sc.textContent = a.shortcut;
-        item.appendChild(sc);
-      } else if (a.hint) {
-        const hint = document.createElement('span');
-        hint.className = 'p-hint';
-        hint.textContent = a.hint;
-        item.appendChild(hint);
-      }
-
-      item.addEventListener('mouseenter', () => setPaletteActive(i));
-      item.addEventListener('click', () => runPaletteAction(i));
-      paletteList.appendChild(item);
-    });
-
-    setPaletteActive(0);
-  }
-
-  function setPaletteActive(i) {
-    paletteActive = i;
-    const items = paletteList.querySelectorAll('.palette-item');
-    items.forEach((el, idx) => el.classList.toggle('active', idx === i));
-    if (items[i]) items[i].scrollIntoView({ block: 'nearest' });
-  }
-
-  function runPaletteAction(i) {
-    const action = paletteFiltered[i];
-    if (!action) return;
-    closePalette();
-    action.run();
-  }
-
-  let paletteReturnFocus = null;
-
-  function openPalette() {
-    paletteReturnFocus = document.activeElement;
-    paletteOverlay.classList.add('open');
-    btnPaletteOpen.classList.add('on');
-    paletteInput.value = '';
-    renderPalette();
-    paletteInput.focus();
-  }
-
-  // Hand focus back on the way out. Leaving it in the hidden palette input
-  // makes the window keydown handler treat every arrow key as typing, so tree
-  // navigation goes dead until the user clicks something.
-  function closePalette() {
-    paletteOverlay.classList.remove('open');
-    btnPaletteOpen.classList.remove('on');
-    paletteInput.blur();
-    const back = paletteReturnFocus;
-    paletteReturnFocus = null;
-    if (back && back !== paletteInput && document.contains(back) && back.focus) {
-      back.focus();
-    }
-  }
-
-  paletteInput.addEventListener('input', renderPalette);
-  paletteInput.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setPaletteActive(Math.min(paletteActive + 1, paletteFiltered.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setPaletteActive(Math.max(paletteActive - 1, 0));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      runPaletteAction(paletteActive);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      closePalette();
-    }
-  });
-  paletteOverlay.addEventListener('click', (e) => {
-    if (e.target === paletteOverlay) closePalette();
-  });
-  btnPaletteOpen.addEventListener('click', openPalette);
-
-  // ----------------------------------------------------------------
   // Keyboard
   // ----------------------------------------------------------------
   window.addEventListener('keydown', (e) => {
-    if (paletteOverlay.classList.contains('open')) {
-      // The palette owns its keys while the input has focus, but Tab can move
-      // focus into the page behind it — Escape has to keep working from there.
-      if (e.key === 'Escape') { e.preventDefault(); closePalette(); }
-      return;
-    }
-
     const mod = e.metaKey || e.ctrlKey;
     const key = e.key.toLowerCase();
 
-    if (mod && !e.altKey && key === 'k') { e.preventDefault(); openPalette(); return; }
     if (mod && !e.altKey && key === 'f') { e.preventDefault(); openFind(); return; }
     if (mod && !e.altKey && key === 'g') {
       if (findOpen) { e.preventDefault(); gotoMatch(findIndex + (e.shiftKey ? -1 : 1)); }
@@ -1399,8 +1197,7 @@ var __jsontreeMain = function () {
 
     // Arrow navigation belongs to the tree, not to a focused text field.
     const typing = document.activeElement === findInput ||
-                   document.activeElement === editArea ||
-                   document.activeElement === paletteInput;
+                   document.activeElement === editArea;
     if (typing || mod || appEl.classList.contains('editing')) return;
 
     if (e.key === 'ArrowDown')  { e.preventDefault(); moveSelection(1); }
