@@ -2,7 +2,7 @@
  *
  * One window, no modes-as-tabs: a unified toolbar, a find bar summoned with
  * ⌘F, a command palette on ⌘K, and a status bar that is the same height in
- * every state. The tree itself is unchanged from the previous release.
+ * every state. The tree keeps the previous release's layout.
  */
 var __jsontreeMain = function () {
   'use strict';
@@ -14,11 +14,15 @@ var __jsontreeMain = function () {
   const treeContainer = document.getElementById('tree-container');
   const treeScroll    = document.getElementById('tree-scroll');
 
-  const btnPaste   = document.getElementById('btn-paste');
-  const btnCopy    = document.getElementById('btn-copy');
-  const btnFormat  = document.getElementById('btn-format');
-  const btnMinify  = document.getElementById('btn-minify');
-  const btnEdit    = document.getElementById('btn-edit');
+  const btnCopy        = document.getElementById('btn-copy');
+  const btnCopyPath    = document.getElementById('btn-copy-path');
+  const btnExpandAll   = document.getElementById('btn-expand-all');
+  const btnCollapseAll = document.getElementById('btn-collapse-all');
+  const btnPaste       = document.getElementById('btn-paste');
+  const btnFormat      = document.getElementById('btn-format');
+  const btnMinify      = document.getElementById('btn-minify');
+  const btnEdit        = document.getElementById('btn-edit');
+  const btnEditLabel   = document.getElementById('btn-edit-label');
   const btnFindOpen    = document.getElementById('btn-find-open');
   const btnPaletteOpen = document.getElementById('btn-palette-open');
 
@@ -96,6 +100,12 @@ var __jsontreeMain = function () {
     if (parentIsArray) return base + '[' + key + ']';
     if (PLAIN_KEY.test(key)) return base === '' ? key : base + '.' + key;
     return base + '[' + JSON.stringify(key) + ']';
+  }
+
+  // "6 keys", "1 item", "0 items" — what a container row says about its size.
+  function describeCount(val, type) {
+    const n = type === 'array' ? val.length : Object.keys(val).length;
+    return n + (type === 'array' ? ' item' : ' key') + (n === 1 ? '' : 's');
   }
 
   function byteSize(str) { return new Blob([str]).size; }
@@ -408,10 +418,11 @@ var __jsontreeMain = function () {
   // ----------------------------------------------------------------
   // Tree building
   //
-  // Unchanged from the previous release: same 18px column grid, the same
-  // ancestorLineMask bookkeeping for indent guides, the same disclosure
-  // triangle. The only addition is the node's path, which the status bar
-  // reads and the Copy Path command copies.
+  // The layout is unchanged from the previous release: same 18px column grid,
+  // the same ancestorLineMask bookkeeping for indent guides, the same
+  // disclosure triangle. Each row also carries the node's path, which the
+  // status bar reads and the Copy Path command copies, a glyph for its type,
+  // and — on a container — a count of what it holds.
   // ----------------------------------------------------------------
   function buildTree(data) {
     treeContainer.innerHTML = '';
@@ -483,6 +494,8 @@ var __jsontreeMain = function () {
 
     const iconEl = document.createElement('span');
     iconEl.className = 'tree-icon icon-' + type;
+    // A boolean's icon is its value: a tick or a cross.
+    if (type === 'boolean') iconEl.classList.add(value ? 'is-true' : 'is-false');
     rowEl.appendChild(iconEl);
 
     const labelEl = document.createElement('span');
@@ -491,6 +504,15 @@ var __jsontreeMain = function () {
     labelEl.textContent = labelText;
     labelEl._rawText = labelText;   // find highlighting rebuilds from this
     rowEl.appendChild(labelEl);
+
+    if (isContainer) {
+      // Beside the label rather than in it: find searches and rewrites label
+      // text, and must neither match "keys" on every object nor wipe the note.
+      const countEl = document.createElement('span');
+      countEl.className = 'tree-count';
+      countEl.textContent = describeCount(value, type);
+      rowEl.appendChild(countEl);
+    }
 
     rowEl._nodeData = {
       key: key,
@@ -884,11 +906,7 @@ var __jsontreeMain = function () {
   function enterEdit(text) {
     editArea.value = text === undefined ? rawText : text;
     appEl.classList.add('editing');
-    // The button is the way back out, so it says what it will do, not where
-    // you are.
-    btnEdit.textContent = 'Done';
-    btnEdit.title = 'Finish editing';
-    btnEdit.classList.add('on');
+    labelModeSwitch();
     if (findOpen) closeFind();
     editArea.focus();
     // focus() leaves the caret at the end, which scrolls a long document out
@@ -909,13 +927,27 @@ var __jsontreeMain = function () {
       showError(res.message);
       return false;
     }
-    appEl.classList.remove('editing');
-    btnEdit.textContent = 'Edit';
-    btnEdit.title = 'Edit the source';
-    btnEdit.classList.remove('on');
-    clearEditError();
+    closeEditor();
     loadParsed(res.data, { trulyEmpty: !!res.trulyEmpty });
     return true;
+  }
+
+  // Puts the tree back in the content area. On its own this discards whatever
+  // is in the textarea, so callers load a document straight afterwards.
+  function closeEditor() {
+    appEl.classList.remove('editing');
+    labelModeSwitch();
+    clearEditError();
+    editArea.blur();
+  }
+
+  // The one button moves between the tree and the editor, and it is the only
+  // way back out of the editor — so it names the view it leads to, not the
+  // one you are in.
+  function labelModeSwitch() {
+    const editing = appEl.classList.contains('editing');
+    btnEditLabel.textContent = editing ? 'View' : 'Edit';
+    btnEdit.title = editing ? 'View the tree' : 'Edit the source';
   }
 
   function clearEditError() { editGutterInner.innerHTML = ''; }
@@ -956,27 +988,26 @@ var __jsontreeMain = function () {
     return appEl.classList.contains('editing') ? editArea.value : rawText;
   }
 
-  function doFormat() {
+  // Format and Minify rewrite the text in the editor and nothing else — putting
+  // it on the clipboard is Copy's job. Their buttons only exist in the editor;
+  // run from the palette over the tree, where there is no text to rewrite, they
+  // open the editor on the result.
+  function rewriteSource(indent, done, nothing) {
     const res = tryParse(currentSource());
     if (!res.ok) { showError(res.message); return; }
-    if (res.trulyEmpty) { showStatus('Nothing to format'); return; }
-    const pretty = JSON.stringify(res.data, null, 2);
+    if (res.trulyEmpty) { showStatus(nothing); return; }
+    const text = JSON.stringify(res.data, null, indent);
     if (appEl.classList.contains('editing')) {
-      editArea.value = pretty;
+      editArea.value = text;
       clearEditError();
     } else {
-      rawText = pretty;
+      enterEdit(text);
     }
-    showStatus('Formatted');
+    showStatus(done);
   }
 
-  function doMinify() {
-    const res = tryParse(currentSource());
-    if (!res.ok) { showError(res.message); return; }
-    if (res.trulyEmpty) { showStatus('Nothing to minify'); return; }
-    copyText(JSON.stringify(res.data));
-    showStatus('Copied minified JSON');
-  }
+  function doFormat() { rewriteSource(2, 'Formatted', 'Nothing to format'); }
+  function doMinify() { rewriteSource(0, 'Minified', 'Nothing to minify'); }
 
   function doCopyAll() {
     if (isEmpty && !appEl.classList.contains('editing')) {
@@ -1034,17 +1065,20 @@ var __jsontreeMain = function () {
     showStatus('jsontree — runs entirely in your browser; nothing you paste is sent anywhere.');
   }
 
+  btnCopy.addEventListener('click', doCopyAll);
+  btnCopyPath.addEventListener('click', doCopyPath);
+  btnExpandAll.addEventListener('click', expandAll);
+  btnCollapseAll.addEventListener('click', collapseAll);
+  btnPaste.addEventListener('click', doPaste);
   btnFormat.addEventListener('click', doFormat);
   btnMinify.addEventListener('click', doMinify);
-  btnCopy.addEventListener('click', doCopyAll);
-  btnPaste.addEventListener('click', doPaste);
 
   // ----------------------------------------------------------------
   // Command palette
   // ----------------------------------------------------------------
   const actions = [
     { id: 'format',        label: 'Format',         hint: 'Re-indent with two spaces', run: doFormat },
-    { id: 'minify',        label: 'Minify',         hint: 'Copy without whitespace',   run: doMinify },
+    { id: 'minify',        label: 'Minify',         hint: 'Remove all whitespace',     run: doMinify },
     { id: 'copyAll',       label: 'Copy All',       hint: 'Copy the whole document',   run: doCopyAll },
     { id: 'copySelection', label: 'Copy Selection', hint: 'Copy the selected value',   run: doCopySelection },
     { id: 'copyPath',      label: 'Copy Path',      hint: 'Copy the selected path',    shortcut: '⌘⌥C', run: doCopyPath },
@@ -1231,9 +1265,14 @@ var __jsontreeMain = function () {
   // ----------------------------------------------------------------
   window.jsontree = {
     load: function (text) {
+      const res = tryParse(text);
       // Unparseable: show the source so the problem is visible and fixable
       // rather than leaving a blank window.
-      if (!loadText(text)) enterEdit(text);
+      if (!res.ok) { enterEdit(text); return; }
+      // A document handed to us is there to be read, so it goes straight to
+      // the tree — even though the app was waiting in the editor.
+      closeEditor();
+      loadParsed(res.data, { trulyEmpty: !!res.trulyEmpty });
     }
   };
 
@@ -1242,6 +1281,10 @@ var __jsontreeMain = function () {
   // ----------------------------------------------------------------
   loadParsed(null, { trulyEmpty: true });
   updateFindCount();
+  // With no document there is nothing to read and one thing to do: put some
+  // JSON in. So an empty app opens in the editor, caret ready for a paste. The
+  // extension follows this with jsontree.load(), which goes to the tree.
+  enterEdit();
 };
 
 // The Chrome extension sets __JSONTREE_DEFER__ before this file runs: it has to

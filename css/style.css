@@ -287,6 +287,72 @@ button {
 .tb-btn:active { background: var(--control-fill-active); }
 .tb-btn.on { background: var(--accent); color: var(--text-on-accent); }
 
+/* The mode switch. It sits with the wordmark because it decides what the rest
+   of the toolbar holds, and unlike the actions it is always drawn as a button.
+   It names the view it leads to — Edit over the tree, View in the editor — so
+   it never takes the accent fill, which in this toolbar means "this is open". */
+.tb-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px 4px 8px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-elevated);
+  flex-shrink: 0;
+}
+
+/* The fills are translucent, so they are laid over the raised surface rather
+   than replacing it — otherwise the button would sink into the toolbar. */
+.tb-mode:hover {
+  background: linear-gradient(var(--control-fill), var(--control-fill)), var(--bg-elevated);
+}
+
+.tb-mode:active {
+  background: linear-gradient(var(--control-fill-active), var(--control-fill-active)), var(--bg-elevated);
+}
+
+/* Its own shadow would otherwise replace the focus ring, which is a shadow too. */
+.tb-mode:focus-visible {
+  box-shadow: var(--shadow-elevated), 0 0 0 3px var(--focus-ring);
+}
+
+.mode-icon { width: 13px; height: 13px; flex-shrink: 0; color: var(--text-secondary); }
+
+.app:not(.editing) .mode-icon-view,
+.app.editing .mode-icon-edit { display: none; }
+
+/* Room is kept for both labels, whichever is showing, so the actions to the
+   right do not shuffle a few pixels sideways each time the label changes. */
+.mode-label {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.mode-label::before,
+.mode-label::after {
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+.mode-label::before { content: 'Edit'; }
+.mode-label::after  { content: 'View'; }
+
+@media (max-width: 620px) {
+  .tb-mode { padding: 4px 8px 4px 7px; }
+}
+
+@media (max-width: 460px) {
+  .tb-mode { padding: 4px 8px; }
+  .mode-icon { display: none; }
+}
+
+/* The tree and the source editor each bring their own actions; Copy belongs to
+   both and stays where it is, so only the buttons after it change. */
+.app:not(.editing) .tb-edit,
+.app.editing .tb-view { display: none; }
+
 .tb-spacer { flex: 1; }
 
 .tb-icon-btn {
@@ -446,16 +512,12 @@ button {
   color: var(--text-on-accent);
 }
 
-.tree-row.selected .icon-object::before,
-.tree-row.selected .icon-array::before {
+.tree-row.selected .tree-icon {
   color: var(--on-accent-icon);
 }
 
-.tree-row.selected .icon-string::before,
-.tree-row.selected .icon-number::before,
-.tree-row.selected .icon-boolean::before,
-.tree-row.selected .icon-null::before {
-  background: var(--on-accent-icon);
+.tree-row.selected .tree-count {
+  color: var(--on-accent-dim);
 }
 
 .tree-row.selected .expander-box::before {
@@ -543,7 +605,9 @@ button {
   transform: rotate(90deg);
 }
 
-/* Type icons */
+/* Type icons — one glyph per JSON type, in that type's colour, so a type
+   reads by shape as well as by hue. A boolean's icon is its value. The
+   glyphs differ in how much of the em box they fill, hence a size each. */
 .tree-icon {
   display: inline-flex;
   align-items: center;
@@ -552,45 +616,40 @@ button {
   height: 16px;
   flex-shrink: 0;
   margin-right: 5px;
-}
-
-.icon-object::before {
-  content: '{}';
   font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 11px;
-  color: var(--ok-object);
+  font-weight: 700;
+  line-height: 1;
 }
 
-.icon-array::before {
-  content: '[]';
-  font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 11px;
-  color: var(--ok-array);
-}
+.icon-object  { color: var(--ok-object); }
+.icon-array   { color: var(--ok-array); }
+.icon-string  { color: var(--ok-string); }
+.icon-number  { color: var(--ok-number); }
+.icon-boolean { color: var(--ok-boolean); }
+.icon-null    { color: var(--ok-null); }
 
-.icon-string::before,
-.icon-number::before,
-.icon-boolean::before,
-.icon-null::before {
-  content: '';
-  display: block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-}
-
-.icon-string::before  { background: var(--ok-string); }
-.icon-number::before  { background: var(--ok-number); }
-.icon-boolean::before { background: var(--ok-boolean); }
-.icon-null::before    { background: var(--ok-null); }
+.icon-object::before  { content: '{}'; font-size: 11px; }
+.icon-array::before   { content: '[]'; font-size: 11px; }
+.icon-string::before  { content: '\201C'; font-size: 16px; }   /* “ */
+.icon-number::before  { content: '#'; font-size: 13px; }
+.icon-boolean.is-true::before  { content: '\2713'; font-size: 12px; }   /* ✓ */
+.icon-boolean.is-false::before { content: '\2715'; font-size: 10px; }   /* ✕ */
+.icon-null::before    { content: '\2205'; font-size: 12px; }   /* ∅ */
 
 /* Label */
 .tree-label {
   font-size: 12.5px;
   color: var(--text-primary);
   font-family: var(--font-ui);
+}
+
+/* How much a container holds — "6 keys", "0 items" — readable before it is
+   opened. A sibling of the label, not part of it: find leaves it alone. */
+.tree-count {
+  margin-left: 4px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
 }
 
 /* Children container */

@@ -18,7 +18,7 @@ changing behaviour, and update it when behaviour changes.**
 npm install                      # once
 npx playwright install chromium  # once
 
-npm test                         # build the extension, then run all 51 tests
+npm test                         # build the extension, then run all 63 tests
 npm run build:extension          # copy the app into extension/vendor/
 
 npx http-server . -p 8080 -c-1   # serve locally at http://localhost:8080
@@ -48,6 +48,11 @@ npx playwright test --reporter=line              # quieter output
 - **Expand/collapse is animated and mid-animation toggles are dropped on
   purpose.** A test that clicks an expander twice in a row must wait for the
   first to land — use the `toggle()` helper in `tests/app.spec.js`.
+- **The app opens in the source editor when it has no document.** Straight
+  after `page.goto('/')` the mode switch reads `View`, and clicking it *leaves*
+  the editor. Use the `type()` helper in `tests/app.spec.js`, which only presses
+  it when the tree is showing. `window.jsontree.load()` is what moves to the
+  tree — it is how the extension, and the tests' `load()` helper, get there.
 - **Don't trust `JSON.parse`'s message for an error position.** Truncated input
   raises `Unexpected end of JSON input` with no position at all. `locateJsonError()`
   in `js/app.js` re-walks the text itself and must stay exactly as strict as the

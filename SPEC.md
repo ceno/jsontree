@@ -31,22 +31,65 @@ The toolbar and status bar are the same height in every state. Opening the find
 bar, entering the editor and emptying the document all leave them untouched —
 the window never flinches.
 
+### Opening
+
+What the app opens on depends on whether it has a document:
+
+- **Empty** — how the website always starts — it opens in the source editor
+  with the caret in the textarea, so the first thing a visitor can do is paste.
+- **Handed a document** — how the extension starts it — it goes straight to the
+  tree. The editor is never shown on the way.
+
+The empty state (`No document`) is no longer where the app starts. It is what
+leaving the editor with nothing in it, or Clear over the tree, shows.
+
 ### Toolbar
 
-Left to right: wordmark · `Paste` `Copy` · `Format` `Minify` · spacer ·
-`Edit` · find icon · palette icon. Flat macOS toolbar buttons, 12.5px, rounded
-hover fill. The find and palette icons take an accent fill while their surface
-is open.
+Left to right: wordmark · mode switch · actions · spacer · find icon · palette
+icon. The actions are flat macOS toolbar buttons, 12.5px, rounded hover fill.
+The find and palette icons take an accent fill while their surface is open.
+
+The mode switch is the one button that moves between the tree and the source
+editor. It sits directly beside the wordmark, ahead of the actions, because it
+decides what the rest of the toolbar holds, and it is always drawn as a raised
+button so it reads as a different kind of control from them.
+
+- It names the view it leads to, not the one showing: `Edit` with a pencil
+  over the tree, `View` with a tree glyph in the editor.
+- It never takes the accent fill. Accent means "this is open" in this toolbar,
+  and a highlighted `View` would say the opposite of the truth.
+- It is the same width with either label, so the actions beside it do not
+  shift when it is pressed.
+
+The actions depend on what the content area is showing, and only one set is
+ever visible:
+
+- **Over the tree** (including the empty state): `Copy` `Copy Path` ·
+  `Expand All` `Collapse All`
+- **In the source editor**: `Copy` `Paste` · `Format` `Minify`
+
+`Copy` is first in both and does not move when the set changes. It copies the
+whole document — pretty-printed over the tree, exactly as typed in the editor.
+`Paste`, `Format` and `Minify` act on the editor's text, so they have no button
+anywhere else.
 
 ### Tree
 
-Unchanged from the previous release and deliberately so: an 18px indent column
-grid, faint 1px indent guides (never elbows), CSS disclosure triangles, type
-icons (`{}` `[]` and coloured dots for string/number/boolean/null), and an
-inset rounded source-list selection in the system accent.
+An 18px indent column grid, faint 1px indent guides (never elbows), CSS
+disclosure triangles, a type icon on every row, and an inset rounded
+source-list selection in the system accent.
 
 - Root is labelled `JSON` and starts expanded; deeper levels start collapsed.
 - Container rows show the key; leaf rows show `key : value`, strings quoted.
+- Every row starts with an icon for its type — a glyph in that type's colour:
+  `{}` object, `[]` array, `“` string, `#` number, `∅` null, and for a boolean
+  its value, `✓` true or `✕` false. On the selected row it turns white with
+  the label.
+- A container row ends with a count of what it holds, in the tertiary text
+  colour: `6 keys` for an object, `0 items` for an array, singular for exactly
+  one. The root counts too. The count describes the document rather than being
+  part of it, so it sits beside the label, not in it, and find does not search
+  it.
 - Array children are keyed by index.
 - Every row carries `data-path` — `results[1].author.orcid` — which the status
   bar displays and the Copy Path command copies. A key is written with a dot
@@ -83,8 +126,10 @@ earlier, tighter runs rank first. Commands: Format, Minify, Copy All, Copy
 Selection, Copy Path, Paste, Clear, Edit Source, Find, Expand All, Collapse All,
 About jsontree. Arrow keys move, Enter runs, Escape closes.
 
-The four most-used actions are also plain toolbar buttons — the palette is the
-power path, not the only path.
+The actions that suit the current view are also plain toolbar buttons — the
+palette is the power path, not the only path. It lists every command in both
+views. Paste over the tree replaces the document. Format and Minify over the
+tree, where there is no text to rewrite, open the editor on the result.
 
 ### Status bar
 
@@ -98,10 +143,17 @@ One line, 24px, always present.
 
 ### Source editor
 
-`Edit` swaps the tree for a monospaced textarea plus a 16px marker gutter.
+`Edit` swaps the tree for a monospaced textarea plus a 16px marker gutter, and
+`View` — the same button — swaps back.
 Validation runs on every keystroke. Leaving the editor requires JSON that
 parses — otherwise the error stands and the editor stays open, rather than
 silently discarding the edit. Opening it puts the caret at the top.
+
+`Format` re-indents the text with two spaces and `Minify` strips its
+whitespace. Both rewrite the textarea and nothing else: neither touches the
+clipboard, so getting minified JSON out is `Minify`, then `Copy`. `Paste`
+replaces the whole text with the clipboard. An invalid buffer is left as it is
+and the error reported.
 
 ### Errors
 
@@ -140,18 +192,23 @@ media query renders one theme's text on the other theme's ground.
 ## External API
 
 `window.jsontree.load(text)` renders a document; the extension calls it with the
-page it took over. Unparseable input opens the editor with the text and the
+page it took over. The document is shown as the tree, and the app leaves the
+editor to show it — it boots into the editor, so this call is what gets the
+extension to the tree. Unparseable input opens the editor with the text and the
 error, rather than leaving a blank window.
 
 ## Testing (Playwright)
 
 `npm test` builds the extension, starts a static server and runs headless
-chromium. `tests/app.spec.js` covers the shell (empty state, constant chrome
-heights), the tree (labels, expand/collapse, connector columns, paths, arrow
-navigation), find (highlighting, counting, revealing, cycling, cleanup), the
-palette (fuzzy filter, running a command), the toolbar actions against the
-clipboard, the editor (round-trip, refusing to close while invalid), error
-positions including truncated input, and the theme override in both directions.
+chromium. `tests/app.spec.js` covers the shell (opening in the editor when
+empty and on the tree when handed a document, the empty state, constant chrome
+heights), the tree (labels, type icons, container counts, expand/collapse,
+connector columns, paths, arrow navigation), find (highlighting, counting, revealing, cycling, cleanup), the
+palette (fuzzy filter, running a command), the toolbar (which actions show in
+which view, each of them against the document and the clipboard, and that
+Format and Minify leave the clipboard alone), the editor (round-trip, refusing
+to close while invalid), error positions including truncated input, and the
+theme override in both directions.
 `tests/extension.spec.js` drives the real extension in a browser.
 
 ## Non-goals

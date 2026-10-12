@@ -97,8 +97,12 @@ test('renders a JSON URL in the tree viewer', async () => {
   const page = await context.newPage();
   await page.goto(JSON_URL);
 
-  // The document renders as the tree, with no interaction needed.
+  // The document renders as the tree, with no interaction needed — the app
+  // opens in the editor when it has nothing to show, but not here.
   await expect(page.locator('#tree-container .tree-row').first()).toBeVisible();
+  await expect(page.locator('#app')).not.toHaveClass(/editing/);
+  await expect(page.locator('#edit-area')).toBeHidden();
+  await expect(page.locator('#btn-edit')).toHaveText('Edit');
   await expect(page.locator('#tree-container')).toContainText('address');
   await expect(page.locator('.tree-row[data-path="address"]')).toBeVisible();
 
@@ -132,9 +136,11 @@ test('leaves ordinary pages alone', async () => {
   const page = await context.newPage();
   await page.goto('http://localhost:8080/');
 
-  // The app itself is an ordinary page: it must boot normally, and empty.
+  // The app itself is an ordinary page: it must boot normally — empty, and
+  // so in the editor.
   await expect(page.locator('#app')).toHaveClass(/empty/);
-  await expect(page.locator('#empty-state')).toBeVisible();
+  await expect(page.locator('#app')).toHaveClass(/editing/);
+  await expect(page.locator('#edit-area')).toBeVisible();
   await page.close();
 });
 
