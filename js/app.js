@@ -102,7 +102,8 @@ var __jsontreeMain = function () {
 
   function formatBytes(n) {
     if (n < 1024) return n + ' B';
-    return (n / 1024).toFixed(1) + ' KB';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / (1024 * 1024)).toFixed(1) + ' MB';
   }
 
   // ----------------------------------------------------------------
@@ -304,8 +305,9 @@ var __jsontreeMain = function () {
   // ----------------------------------------------------------------
   function describeDocument() {
     if (isEmpty) return 'Empty';
+    const n = countNodes(parsedData);
     return 'Valid JSON · ' + formatBytes(byteSize(rawText)) + ' · ' +
-           countNodes(parsedData) + ' nodes';
+           n + (n === 1 ? ' node' : ' nodes');
   }
 
   // Re-derives both the text and its severity. describeEditBuffer() returns the
@@ -547,6 +549,12 @@ var __jsontreeMain = function () {
   const nodeAnimMap = new WeakMap();
   const ANIM_DURATION = 250;
 
+  // The find bar and palette honour this in CSS; the expand/collapse slide is
+  // driven here, so it has to ask as well.
+  const reducedMotion = window.matchMedia
+    ? window.matchMedia('(prefers-reduced-motion: reduce)')
+    : { matches: false };
+
   function easeOut(t) { return 1 - (1 - t) * (1 - t); }
 
   function finishAnimInstantly(nodeEl) {
@@ -566,6 +574,11 @@ var __jsontreeMain = function () {
   function startAnim(nodeEl, box, expanding) {
     const childrenEl = nodeEl.querySelector(':scope > .tree-children');
     if (!childrenEl) return;
+
+    if (reducedMotion.matches) {
+      setExpanded(nodeEl, expanding);
+      return;
+    }
 
     if (expanding) childrenEl.classList.remove('collapsed');
 

@@ -537,3 +537,26 @@ test('37. Escape closes the palette even after Tab moves focus out', async ({ pa
   await page.keyboard.press('Escape');
   await expect(page.locator('#palette-overlay')).not.toHaveClass(/open/);
 });
+
+// QA question 9: the CSS honours reduced motion but the JS slide did not.
+test('38. reduced motion skips the expand animation', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await load(page);
+  await page.locator('.tree-row[data-path="address"] .expander-box').click();
+
+  // No inline height is ever parked on the container, and the row is there now.
+  await expect(page.locator('.tree-row[data-path="address.city"]')).toBeVisible();
+  const h = await page.locator('.tree-row[data-path="address"]').evaluate(
+    r => r.parentElement.querySelector(':scope > .tree-children').style.height);
+  expect(h).toBe('');
+});
+
+// QA question 10: "1 nodes", and KB with no MB above it.
+test('39. the status bar counts and units read correctly', async ({ page }) => {
+  await load(page, '42');
+  await expect(page.locator('#status-left')).toHaveText('Valid JSON · 2 B · 1 node');
+
+  await page.evaluate(() => window.jsontree.load(
+    JSON.stringify({ blob: 'x'.repeat(2 * 1024 * 1024) })));
+  await expect(page.locator('#status-left')).toContainText(' MB · ');
+});
