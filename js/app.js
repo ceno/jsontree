@@ -454,9 +454,8 @@ var __jsontreeMain = function () {
   // ----------------------------------------------------------------
   // Tree building
   //
-  // The layout is unchanged from the previous release: same 18px column grid,
-  // the same ancestorLineMask bookkeeping for indent guides, the same
-  // disclosure triangle. Each row also carries the node's path, which the
+  // Rows sit on an 18px column grid: one column per level above the node,
+  // then one for its own disclosure triangle. Each row also carries the node's path, which the
   // status bar reads and the Copy Path command copies, a glyph for its type,
   // and — on a container — a count of what it holds.
   //
@@ -469,7 +468,7 @@ var __jsontreeMain = function () {
     selectedRow = null;
     if (data === undefined) return;
 
-    const rootEl = createNodeEl('JSON', data, 0, null, [], true, '');
+    const rootEl = createNodeEl('JSON', data, 0, null, '');
     treeContainer.appendChild(rootEl);
 
     if (!open) { setExpanded(rootEl, true); return; }
@@ -485,14 +484,11 @@ var __jsontreeMain = function () {
     box.classList.toggle('plus', !expanded);
   }
 
-  // ancestorLineMask: boolean[] of length `depth`.
-  //   [i] = true  → ancestor at depth i has a following sibling, so its
-  //                 pass-through column draws a full-height indent guide
-  //   [i] = false → ancestor is a last child → that column is blank
-  //
-  // isLastSibling: true → corner guide (half height); false → tee (full).
-  // The root always gets tc-root, which draws nothing.
-  function createNodeEl(key, value, depth, parentData, ancestorLineMask, isLastSibling, path) {
+  // A row is `depth` pass-through columns, one under each ancestor's
+  // triangle, and then a column for the node's own. The indent guides are not
+  // the rows' to draw: each container's block of children draws one, in that
+  // container's column, so it has to be told how deep the container is.
+  function createNodeEl(key, value, depth, parentData, path) {
     const type = getType(value);
     const isContainer = isContainerType(type);
 
@@ -506,16 +502,12 @@ var __jsontreeMain = function () {
 
     for (let i = 0; i < depth; i++) {
       const col = document.createElement('span');
-      col.className = 'tc tc-pass' + (ancestorLineMask[i] ? ' has-line' : '');
+      col.className = 'tc tc-pass';
       rowEl.appendChild(col);
     }
 
     const elbowCol = document.createElement('span');
-    if (depth === 0) {
-      elbowCol.className = 'tc tc-root';
-    } else {
-      elbowCol.className = 'tc tc-elbow ' + (isLastSibling ? 'tc-corner' : 'tc-tee');
-    }
+    elbowCol.className = depth === 0 ? 'tc tc-root' : 'tc tc-elbow';
 
     if (isContainer) {
       const box = document.createElement('span');
@@ -578,23 +570,17 @@ var __jsontreeMain = function () {
     if (isContainer) {
       const childrenEl = document.createElement('div');
       childrenEl.className = 'tree-children collapsed';
+      childrenEl.style.setProperty('--depth', depth);
 
       const isArray = type === 'array';
       const entries = isArray
         ? value.map((v, idx) => [String(idx), v])
         : Object.entries(value);
 
-      // Children inherit this node's mask plus one entry for this node: a
-      // guide continues downward only if this node has a following sibling.
-      const childMask = ancestorLineMask.concat(!isLastSibling);
-
       for (let idx = 0; idx < entries.length; idx++) {
         const pair = entries[idx];
         const childPath = joinPath(path, pair[0], isArray);
-        childrenEl.appendChild(createNodeEl(
-          pair[0], pair[1], depth + 1, value, childMask,
-          idx === entries.length - 1, childPath
-        ));
+        childrenEl.appendChild(createNodeEl(pair[0], pair[1], depth + 1, value, childPath));
       }
 
       nodeEl.appendChild(childrenEl);

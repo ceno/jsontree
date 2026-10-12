@@ -552,10 +552,9 @@ button {
 .app.editing #tree-scroll { display: none; }
 .app.empty #tree-scroll { display: none; }
 /* ============================================================
-   Tree nodes — source-list rows with disclosure triangles.
-   Connector lines are reduced to faint indent guides; the .tc /
-   .tc-pass / .tc-tee / .tc-corner boxes stay in layout (same
-   18px column grid) but no longer draw a Windows-explorer tree.
+   Tree nodes — source-list rows with disclosure triangles, on an
+   18px column grid: a .tc-pass column for each level above the
+   node, then one holding its own triangle.
    ============================================================ */
 .tree-node {
   position: relative;
@@ -598,13 +597,16 @@ button {
   border-left-color: var(--on-accent-icon);
 }
 
-.tree-row.selected .tc-pass.has-line,
-.tree-row.selected .tc-tee,
-.tree-row.selected .tc-corner {
+/* The selected row's fill covers the guides that pass behind it, so it
+   draws that stretch of them itself, in a tone that shows on the accent. */
+.tree-row.selected .tc-pass {
   background-image: linear-gradient(var(--on-accent-guide), var(--on-accent-guide));
+  background-position: 9px 0;
+  background-size: 1px 100%;
+  background-repeat: no-repeat;
 }
 
-/* Base column — every indent/elbow cell in a tree row */
+/* Base column — every cell of the grid in a tree row */
 .tc {
   display: inline-flex;
   width: 18px;
@@ -612,35 +614,6 @@ button {
   flex-shrink: 0;
   position: relative;
 }
-
-/* Pass-through column: faint full-height indent guide.
-   Must be an image layer (linear-gradient), not a flat
-   background-color — a solid color ignores background-position/
-   size and fills the whole box instead of a 1px line. */
-.tc-pass.has-line {
-  background-image: linear-gradient(var(--connector), var(--connector));
-  background-position: 9px 0;
-  background-size: 1px 100%;
-  background-repeat: no-repeat;
-}
-
-/* Tee / corner: same faint vertical guide, no horizontal stub —
-   the disclosure triangle communicates hierarchy instead */
-.tc-tee {
-  background-image: linear-gradient(var(--connector), var(--connector));
-  background-position: 9px 0;
-  background-size: 1px 100%;
-  background-repeat: no-repeat;
-}
-
-.tc-corner {
-  background-image: linear-gradient(var(--connector), var(--connector));
-  background-position: 9px 0;
-  background-size: 1px 50%;
-  background-repeat: no-repeat;
-}
-
-/* Root column: no lines — tc-root carries no background */
 
 /* Expander — disclosure triangle, rotates open/closed */
 .expander-box {
@@ -726,9 +699,21 @@ button {
   flex-shrink: 0;
 }
 
-/* Children container */
+/* Children container — and the indent guide. An open container has one: a
+   hairline hung under its own triangle, running beside everything inside it
+   and ending with its last row. The block draws it rather than the rows, so
+   it is unbroken across the gaps between them; and it lies in the
+   container's column, one to the left of its children's triangles, so a
+   guide never crosses a triangle.
+   It must be an image layer (linear-gradient), not a flat background-color —
+   a solid colour ignores background-position/size and fills the whole box. */
 .tree-children {
   display: block;
+  background-image: linear-gradient(var(--connector), var(--connector));
+  /* the rows' left margin, the container's column, the middle of that column */
+  background-position: calc(5px + var(--depth) * 18px + 9px) 0;
+  background-size: 1px 100%;
+  background-repeat: no-repeat;
 }
 
 .tree-children.collapsed {

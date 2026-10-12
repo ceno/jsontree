@@ -100,6 +100,12 @@ source-list selection in the system accent.
   part of it, so it sits beside the label, not in it, and search does not look at
   it.
 - Array children are keyed by index.
+- An open container has one indent guide: a hairline hung under its own
+  disclosure triangle, running unbroken beside everything inside it and ending
+  with its last row. It lies in the container's column, one to the left of its
+  children's triangles, so a guide never crosses a triangle. The selected row's
+  fill hides the guides behind it, so it redraws that stretch of them in a
+  lighter tone.
 - Every row carries `data-path` — `results[1].author.orcid` — which the status
   bar displays and Copy Path copies. A key is written with a dot
   only when it cannot be mistaken for anything else; otherwise it is
@@ -298,7 +304,8 @@ error, rather than leaving a blank window.
 chromium. `tests/app.spec.js` covers the shell (opening in the editor when
 empty and on the tree when handed a document, the empty state, constant chrome
 heights), the tree (labels, type icons, container counts, expand/collapse,
-connector columns, paths, arrow navigation), search over the tree (tinting,
+connector columns, the indent guides keeping clear of the triangles, paths,
+arrow navigation), search over the tree (tinting,
 counting, revealing, stepping, clearing) and in the editor (marking every
 occurrence, marks lying exactly under their text, scrolling to a match,
 following edits, handing the caret back, standing across the view change,

@@ -148,6 +148,55 @@ test('5. connector columns stay in layout at every depth', async ({ page }) => {
   await expect(rows.nth(1).locator('.tc-elbow')).toHaveCount(1);
 });
 
+test('5b. an indent guide hangs under its own container\'s arrow and crosses no other', async ({ page }) => {
+  await load(page);
+  await page.locator('#btn-expand-all').click();
+
+  // One guide per open container, drawn by its block of children.
+  const guides = await page.evaluate(() => {
+    const sides = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, bottom: r.bottom }; };
+    return Array.from(document.querySelectorAll('.tree-children')).map((block) => {
+      const style = getComputedStyle(block);
+      const box = block.getBoundingClientRect();
+      const rows = block.querySelectorAll('.tree-row');
+      return {
+        drawn: style.backgroundImage !== 'none',
+        left: box.left + parseFloat(style.backgroundPositionX),   // the hairline is 1px from here
+        top: box.top,
+        bottom: box.bottom,
+        own: sides(block.parentElement.querySelector(':scope > .tree-row .expander-box')),
+        within: Array.from(block.querySelectorAll('.expander-box')).map(sides),
+        firstRowTop: rows[0].getBoundingClientRect().top,
+        lastRowBottom: rows[rows.length - 1].getBoundingClientRect().bottom,
+      };
+    });
+  });
+
+  expect(guides).toHaveLength(4);   // the root, address, address.geo, tags
+  for (const g of guides) {
+    expect(g.drawn).toBe(true);
+    // Under the middle of its own arrow, and starting below it…
+    expect(Math.abs(g.left + 0.5 - (g.own.left + g.own.right) / 2)).toBeLessThanOrEqual(1);
+    expect(g.top).toBeGreaterThanOrEqual(g.own.bottom);
+    // …in one piece from its first row to its last…
+    expect(g.top).toBeCloseTo(g.firstRowTop, 1);
+    expect(g.bottom).toBeCloseTo(g.lastRowBottom, 1);
+    // …and clear of every arrow further in.
+    for (const arrow of g.within) {
+      expect(g.left + 1 <= arrow.left || g.left >= arrow.right).toBe(true);
+    }
+  }
+
+  // No row draws a guide of its own, save the selected one: its fill hides
+  // the guides behind it, so it draws that stretch of them itself.
+  const lat = page.locator('.tree-row[data-path="address.geo.lat"]');
+  const drawn = () => lat.locator('.tc').evaluateAll(
+    (cols) => cols.map((c) => getComputedStyle(c).backgroundImage !== 'none'));
+  expect(await drawn()).toEqual([false, false, false, false]);
+  await lat.click();
+  expect(await drawn()).toEqual([true, true, true, false]);
+});
+
 test('6. selecting a row shows its path, and the path copies on click', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await load(page);
