@@ -219,6 +219,14 @@ Validation runs on every keystroke. Leaving the editor requires JSON that
 parses — otherwise the error stands and the editor stays open, rather than
 silently discarding the edit. Opening it puts the caret at the top.
 
+Leaving it rebuilds the tree from the text, and the tree comes back open where
+it was: every container that stood open before is open again, whether or not
+the text was edited. They are matched by path, so a container an edit added,
+renamed or moved starts collapsed like any new one, and in an array it is the
+index that is remembered, not the element. A root that was collapsed stays
+collapsed. A document handed to the app from outside is a new one, and starts
+with only its root open.
+
 `Format` re-indents the text with two spaces and `Minify` strips its
 whitespace. Both rewrite the textarea and nothing else: neither touches the
 clipboard. An invalid buffer is left as it is and the error reported.
@@ -298,7 +306,8 @@ invalid JSON, the boxed match on a line too long to colour) and the field
 folding in a narrow window, the toolbar (which actions show in
 which view, each of them against the document and the clipboard, that Copy
 takes the selected node whole, and that Format and Minify leave the clipboard
-alone), the editor (round-trip, pasting with the keyboard, refusing
+alone), the editor (round-trip, the tree coming back open where it was,
+pasting with the keyboard, refusing
 to close while invalid, line numbers, colouring by type, the coloured copy
 lying exactly over the textarea, escaping, the fault underline, drawing the
 right lines wherever a long document is scrolled to, the plain fallback, and

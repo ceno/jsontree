@@ -459,8 +459,12 @@ var __jsontreeMain = function () {
   // disclosure triangle. Each row also carries the node's path, which the
   // status bar reads and the Copy Path command copies, a glyph for its type,
   // and — on a container — a count of what it holds.
+  //
+  // `open` is the paths that stood open in the tree this one replaces, and
+  // those are opened again. Without it the document is a new one, and starts
+  // with only its root open.
   // ----------------------------------------------------------------
-  function buildTree(data) {
+  function buildTree(data, open) {
     treeContainer.innerHTML = '';
     selectedRow = null;
     if (data === undefined) return;
@@ -468,12 +472,10 @@ var __jsontreeMain = function () {
     const rootEl = createNodeEl('JSON', data, 0, null, [], true, '');
     treeContainer.appendChild(rootEl);
 
-    const rootChildren = rootEl.querySelector('.tree-children');
-    if (rootChildren) {
-      rootChildren.classList.remove('collapsed');
-      const expander = rootEl.querySelector('.expander-box');
-      if (expander) setExpanderGlyph(expander, true);
-    }
+    if (!open) { setExpanded(rootEl, true); return; }
+    allNodes().forEach((nodeEl) => {
+      if (open.has(nodeEl.firstChild._nodeData.path)) setExpanded(nodeEl, true);
+    });
   }
 
   // The +/− glyph is a CSS-drawn triangle; these classes are the sole source
@@ -704,6 +706,21 @@ var __jsontreeMain = function () {
 
   function allNodes() {
     return Array.prototype.slice.call(treeContainer.querySelectorAll('.tree-node'));
+  }
+
+  // The path of every container standing open. Rows do not outlive a rebuild
+  // of the tree; their paths do, which is how the new ones know to open.
+  function expandedPaths() {
+    const open = new Set();
+    allNodes().forEach((nodeEl) => {
+      // Mid-slide, a closing container has not been marked closed yet.
+      if (nodeAnimMap.has(nodeEl)) finishAnimInstantly(nodeEl);
+      const childrenEl = nodeEl.querySelector(':scope > .tree-children');
+      if (childrenEl && !childrenEl.classList.contains('collapsed')) {
+        open.add(nodeEl.firstChild._nodeData.path);
+      }
+    });
+    return open;
   }
 
   function expandAll() {
@@ -953,7 +970,7 @@ var __jsontreeMain = function () {
       treeContainer.innerHTML = '';
       selectedRow = null;
     } else {
-      buildTree(data);
+      buildTree(data, opts && opts.open);
       // Nothing is selected on load: the root's "selection" would paint a bar
       // across the top conveying nothing, and the status bar is more useful
       // showing the ⌘F hint until the reader picks a node.
@@ -995,7 +1012,11 @@ var __jsontreeMain = function () {
       return false;
     }
     closeEditor();
-    loadParsed(res.data, { trulyEmpty: !!res.trulyEmpty });
+    // The tree that was left is still there behind the editor, and is about
+    // to be rebuilt from the text. What was open in it stays open, edited or
+    // not; an empty document had no tree to remember.
+    const open = isEmpty ? null : expandedPaths();
+    loadParsed(res.data, { trulyEmpty: !!res.trulyEmpty, open: open });
     return true;
   }
 

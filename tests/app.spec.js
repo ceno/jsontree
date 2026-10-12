@@ -380,6 +380,51 @@ test('18. editing the source rebuilds the tree', async ({ page }) => {
   await expect(page.locator('#tree-container .tree-label').nth(1)).toHaveText('hello : "world"');
 });
 
+test('18b. leaving the editor keeps open what was open, edited or not', async ({ page }) => {
+  await load(page);
+  await expand(page, 'address');
+  await expand(page, 'address.geo');
+  const lat = page.locator('.tree-row[data-path="address.geo.lat"]');
+  const tag = page.locator('.tree-row[data-path="tags[0]"]');
+  const glyph = (path) => page.locator(`.tree-row[data-path="${path}"] .expander-box`);
+
+  // There and back with nothing changed.
+  await page.locator('#btn-edit').click();
+  await page.locator('#btn-edit').click();
+  await expect(lat).toBeVisible();
+  await expect(tag).toBeHidden();          // what was shut stays shut
+  await expect(glyph('address')).toHaveClass(/minus/);
+  await expect(glyph('tags')).toHaveClass(/plus/);
+
+  // And with the text edited: a value changed inside an open container, and
+  // a container added. The first is still open; the new one starts shut.
+  const doc = JSON.parse(SAMPLE);
+  doc.address.geo.lat = 1;
+  doc.extra = { a: 1 };
+  await type(page, JSON.stringify(doc));
+  await page.locator('#btn-edit').click();
+  await expect(lat).toContainText('lat : 1');
+  await expect(lat).toBeVisible();
+  await expect(tag).toBeHidden();
+  await expect(page.locator('.tree-row[data-path="extra"]')).toBeVisible();
+  await expect(page.locator('.tree-row[data-path="extra.a"]')).toBeHidden();
+
+  // A root that was shut comes back shut, too.
+  await toggle(page, '');
+  await page.locator('#btn-edit').click();
+  await page.locator('#btn-edit').click();
+  await expect(page.locator('.tree-row[data-path=""]')).toBeVisible();
+  await expect(page.locator('.tree-row[data-path="name"]')).toBeHidden();
+});
+
+test('18c. a first document typed into the empty editor opens at its root only', async ({ page }) => {
+  await page.goto('/');
+  await type(page, SAMPLE);
+  await page.locator('#btn-edit').click();
+  await expect(page.locator('.tree-row[data-path="name"]')).toBeVisible();
+  await expect(page.locator('.tree-row[data-path="address.city"]')).toBeHidden();
+});
+
 test('19. Format re-indents the source in place and leaves the clipboard alone', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto('/');
