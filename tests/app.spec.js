@@ -376,8 +376,10 @@ test('21d. the error marker tracks the offending line', async ({ page }) => {
   await page.goto('/');
   await type(page, '{\n  "a": 1,\n  "b": "x",\n  "c": "\\x"\n}');
   await expect(page.locator('#status-left')).toContainText('line 4');
+  // It lies over line 4's number and repeats it in red.
+  await expect(page.locator('.edit-error-marker')).toHaveText('4');
   const top = await page.locator('.edit-error-marker').evaluate(el => parseFloat(el.style.top));
-  expect(top).toBeGreaterThan(60);   // line 4, not line 1 (~7.6px)
+  expect(top).toBe(60);   // three 20px lines down, not on line 1
 });
 
 test('22. the editor refuses to close while the JSON is invalid', async ({ page }) => {
@@ -854,4 +856,163 @@ test('52. find neither matches the counts nor disturbs them', async ({ page }) =
   await page.keyboard.press('Escape');
   await expect(page.locator('.tree-row[data-path="first"] .tree-label')).toHaveText('first');
   await expect(page.locator('.tree-row[data-path="first"] .tree-count')).toHaveText('1 key');
+});
+
+// ----------------------------------------------------------------
+// The editor's line numbers and colouring
+// ----------------------------------------------------------------
+const lineNumbers = (page) =>
+  page.locator('#edit-line-numbers').evaluate(el => el.textContent.split('\n'));
+const drawnText = (page) => page.locator('#edit-highlight').evaluate(el => el.textContent);
+
+test('53. the editor numbers every line and keeps up as the text changes', async ({ page }) => {
+  await page.goto('/');
+  expect(await lineNumbers(page)).toEqual(['1']);          // an empty editor still has a first line
+
+  await type(page, '{\n  "a": 1,\n  "b": 2\n}');
+  expect(await lineNumbers(page)).toEqual(['1', '2', '3', '4']);
+  await page.locator('#edit-area').fill('{"a":1,"b":[1,2]}');
+  expect(await lineNumbers(page)).toEqual(['1']);
+
+  // Format, Minify and Clear rewrite the text without the reader typing, and
+  // the numbers and the coloured copy have to follow those too.
+  await page.locator('#btn-format').click();
+  expect(await lineNumbers(page)).toEqual(['1', '2', '3', '4', '5', '6', '7']);
+  expect(await drawnText(page)).toBe(await page.locator('#edit-area').inputValue());
+
+  await page.locator('#btn-minify').click();
+  expect(await lineNumbers(page)).toEqual(['1']);
+  expect(await drawnText(page)).toBe('{"a":1,"b":[1,2]}');
+
+  await page.keyboard.press('Meta+k');
+  await page.locator('#palette-input').fill('clear');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#edit-area')).toHaveValue('');
+  expect(await drawnText(page)).toBe('');
+});
+
+test('54. values are coloured by type; keys and punctuation are not', async ({ page }) => {
+  await page.goto('/');
+  await type(page, '{\n  "name": "John",\n  "age": 30,\n  "ok": true,\n  "off": false,\n  "none": null,\n  "neg": -1.5e3\n}');
+  const texts = (cls) => page.locator('#edit-highlight .' + cls).allTextContents();
+
+  expect(await texts('tok-str')).toEqual(['"John"']);      // and none of the six keys
+  expect(await texts('tok-num')).toEqual(['30', '-1.5e3']);
+  expect(await texts('tok-bool')).toEqual(['true', 'false']);
+  expect(await texts('tok-null')).toEqual(['null']);
+
+  // A colour per type, and none of them the default ink the keys are left in.
+  const colour = (sel) => page.locator(sel).first().evaluate(el => getComputedStyle(el).color);
+  const colours = [
+    await colour('#edit-highlight'),
+    await colour('#edit-highlight .tok-str'), await colour('#edit-highlight .tok-num'),
+    await colour('#edit-highlight .tok-bool'), await colour('#edit-highlight .tok-null'),
+  ];
+  expect(new Set(colours).size).toBe(5);
+});
+
+// The reader sees the coloured copy, never the textarea's own glyphs, while
+// the caret and the selection belong to the textarea. If the two disagree
+// about where a glyph goes, the caret drifts off the text.
+test('55. the coloured copy lies exactly over the textarea\'s text', async ({ page }) => {
+  await page.goto('/');
+  await type(page, '{\n\t"a": "b"\n}');
+  const metrics = (sel) => page.locator(sel).evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return [cs.fontFamily, cs.fontSize, cs.fontWeight, cs.lineHeight, cs.letterSpacing, cs.whiteSpace,
+            cs.tabSize, cs.paddingTop, cs.paddingLeft, cs.borderTopWidth, cs.borderLeftWidth].join(' | ');
+  });
+  expect(await metrics('#edit-highlight')).toBe(await metrics('#edit-area'));
+
+  const area = await page.locator('#edit-area').boundingBox();
+  const copy = await page.locator('#edit-highlight').boundingBox();
+  expect(copy.x).toBe(area.x);
+  expect(copy.y).toBe(area.y);
+  expect(await drawnText(page)).toBe('{\n\t"a": "b"\n}');
+
+  // The textarea's glyphs are hidden; its caret is not.
+  await expect(page.locator('#edit-area')).toHaveCSS('color', 'rgba(0, 0, 0, 0)');
+  await expect(page.locator('#edit-area')).not.toHaveCSS('caret-color', 'rgba(0, 0, 0, 0)');
+});
+
+// The copy is built as markup from whatever was typed or pasted.
+test('56. the editor escapes what it colours', async ({ page }) => {
+  await page.goto('/');
+  const text = '\n{"html": "<b>bold</b> & <img src=x onerror=alert(1)>", "<i>": 1}';
+  await type(page, text);
+  await expect(page.locator('#edit-highlight :not(span)')).toHaveCount(0);
+  expect(await drawnText(page)).toBe(text);
+});
+
+test('57. a fault is underlined to the end of its line, and colour carries on past it', async ({ page }) => {
+  await page.goto('/');
+  await type(page, '{\n  "a": 1\n  "b": 2,\n  "c": "still coloured"\n}');
+  await expect(page.locator('#status-left')).toContainText('line 3, column 3');
+
+  await expect(page.locator('#edit-highlight .tok-error')).toHaveText('"b": 2,');
+  await expect(page.locator('.edit-error-marker')).toHaveText('3');
+  // A lexer, not the parser, does the colouring: one typo costs one line.
+  expect(await page.locator('#edit-highlight .tok-num').allTextContents()).toEqual(['1']);
+  expect(await page.locator('#edit-highlight .tok-str').allTextContents()).toEqual(['"still coloured"']);
+  expect(await drawnText(page)).toBe(await page.locator('#edit-area').inputValue());
+
+  await page.locator('#edit-area').fill('{\n  "a": 1,\n  "b": 2\n}');
+  await expect(page.locator('#edit-highlight .tok-error')).toHaveCount(0);
+  await expect(page.locator('.edit-error-marker')).toHaveCount(0);
+});
+
+// Only the lines on screen are drawn, so that typing costs the same in a long
+// document as in a short one. Wherever the editor is scrolled to, the right
+// lines have to be there, level with their numbers.
+test('58. a long document is numbered and coloured wherever it is scrolled to', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => window.jsontree.load(
+    JSON.stringify(Array.from({ length: 5000 }, (_, i) => ({ id: i, name: 'row ' + i })))));
+  await page.locator('#btn-edit').click();
+  await expect(page.locator('#status-left')).toContainText('20002 lines');
+
+  expect((await lineNumbers(page))[0]).toBe('1');
+  expect((await lineNumbers(page)).length).toBeLessThan(200);      // a window, not all 20,002
+
+  // Row 2500 is lines 10002–10005; its name is on 10004. Put line 10001 at
+  // the top of the editor.
+  await page.locator('#edit-area').evaluate((el) => { el.scrollTop = 10000 * 20; });
+  await expect.poll(async () => (await lineNumbers(page)).includes('10004')).toBe(true);
+
+  const at = await page.evaluate(() => {
+    const numbers = document.getElementById('edit-line-numbers').firstChild;
+    const from = numbers.data.indexOf('10004');
+    const range = document.createRange();
+    range.setStart(numbers, from);
+    range.setEnd(numbers, from + 5);
+    const name = [...document.querySelectorAll('#edit-highlight .tok-str')]
+      .find(el => el.textContent === '"row 2500"');
+    const area = document.getElementById('edit-area').getBoundingClientRect();
+    return {
+      number: range.getBoundingClientRect().top - area.top,
+      text: name.getBoundingClientRect().top - area.top,
+    };
+  });
+  // Line 10004 starts 12px of padding plus three lines below the top edge.
+  expect(at.text).toBeGreaterThanOrEqual(72);
+  expect(at.text).toBeLessThan(92);
+  expect(Math.abs(at.number - at.text)).toBeLessThan(1);
+});
+
+// One enormous line cannot be drawn a window at a time, and colouring all of
+// it on every keystroke is what the window exists to avoid.
+test('59. a line too long to colour is shown plain, and still numbered', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => window.jsontree.load(JSON.stringify({ blob: 'x'.repeat(150000), n: 1 })));
+  await page.locator('#btn-edit').click();
+
+  await expect(page.locator('#edit-wrap')).toHaveClass(/plain/);
+  await expect(page.locator('#edit-highlight')).toBeHidden();
+  // With no copy to look at, the textarea has to show its own text.
+  await expect(page.locator('#edit-area')).not.toHaveCSS('color', 'rgba(0, 0, 0, 0)');
+  expect(await lineNumbers(page)).toEqual(['1', '2', '3', '4']);
+
+  await page.locator('#edit-area').fill('{"n": 1}');
+  await expect(page.locator('#edit-wrap')).not.toHaveClass(/plain/);
+  await expect(page.locator('#edit-highlight .tok-num')).toHaveText('1');
 });

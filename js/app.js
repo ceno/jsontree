@@ -35,7 +35,10 @@ var __jsontreeMain = function () {
 
   const editWrap        = document.getElementById('edit-wrap');
   const editArea        = document.getElementById('edit-area');
+  const editGutter      = document.getElementById('edit-gutter');
   const editGutterInner = document.getElementById('edit-gutter-inner');
+  const editLineNumbers = document.getElementById('edit-line-numbers');
+  const editHighlight   = document.getElementById('edit-highlight');
 
   const statusLeft = document.getElementById('status-left');
   const statusPath = document.getElementById('status-path');
@@ -44,7 +47,9 @@ var __jsontreeMain = function () {
   const paletteInput   = document.getElementById('palette-input');
   const paletteList    = document.getElementById('palette-list');
 
-  const EDIT_LINE_HEIGHT = 12.5 * 1.85;   // must track #edit-area in style.css
+  const EDIT_LINE_HEIGHT = 20;            // px; must track the editor's line-height in style.css
+  const EDIT_OVERSCAN = 40;               // lines drawn beyond each edge of the editor
+  const HIGHLIGHT_LIMIT = 100000;         // characters; more than this on screen is not coloured
   const PATH_HINT = '⌘K Commands · ⌘F Find';
 
   // ----------------------------------------------------------------
@@ -263,8 +268,9 @@ var __jsontreeMain = function () {
       if (e.__at === undefined) return null;
       // Do not clamp: when the input simply ran out, the position one past the
       // end is the honest answer, and clamping reports the previous line.
-      const lc = lineColOf(text, Math.min(e.__at, n));
-      return { line: lc.line, col: lc.col, reason: e.__reason };
+      const at = Math.min(e.__at, n);
+      const lc = lineColOf(text, at);
+      return { line: lc.line, col: lc.col, at: at, reason: e.__reason };
     }
   }
 
@@ -278,6 +284,7 @@ var __jsontreeMain = function () {
         return {
           ok: false,
           line: where.line,
+          at: where.at,
           message: 'Invalid JSON — line ' + where.line + ', column ' + where.col + ': ' + where.reason
         };
       }
@@ -289,6 +296,7 @@ var __jsontreeMain = function () {
       return {
         ok: false,
         line: lc.line,
+        at: lc.at,
         message: 'Invalid JSON — line ' + lc.line + ', column ' + lc.col + ': ' + tidyReason(e.message)
       };
     }
@@ -296,10 +304,27 @@ var __jsontreeMain = function () {
 
   function positionFromMessage(text, message) {
     const lineCol = /\(line (\d+) column (\d+)\)/.exec(message);
-    if (lineCol) return { line: +lineCol[1], col: +lineCol[2] };
+    if (lineCol) {
+      const line = +lineCol[1], col = +lineCol[2];
+      return { line: line, col: col, at: indexOfLineCol(text, line, col) };
+    }
     const pos = /position (\d+)/.exec(message);
-    if (pos) return lineColOf(text, Math.min(+pos[1], text.length));
-    return { line: 1, col: 1 };
+    if (pos) {
+      const at = Math.min(+pos[1], text.length);
+      const lc = lineColOf(text, at);
+      return { line: lc.line, col: lc.col, at: at };
+    }
+    return { line: 1, col: 1, at: 0 };
+  }
+
+  function indexOfLineCol(text, line, col) {
+    let start = 0;
+    for (let l = 1; l < line; l++) {
+      const nl = text.indexOf('\n', start);
+      if (nl === -1) break;
+      start = nl + 1;
+    }
+    return Math.min(start + col - 1, text.length);
   }
 
   function tidyReason(message) {
@@ -914,16 +939,15 @@ var __jsontreeMain = function () {
     // come after the value is assigned — setting .value resets the caret.
     editArea.setSelectionRange(0, 0);
     editArea.scrollTop = 0;
-    editGutterInner.style.transform = 'translateY(0px)';
+    editArea.scrollLeft = 0;
     validateEditBuffer();
   }
 
   // Leaving requires a document we can render; the status bar already says
   // what is wrong, so refuse rather than silently discarding the edit.
   function exitEdit() {
-    const res = tryParse(editArea.value);
+    const res = refreshEditor();
     if (!res.ok) {
-      markEditError(res.line);
       showError(res.message);
       return false;
     }
@@ -937,7 +961,6 @@ var __jsontreeMain = function () {
   function closeEditor() {
     appEl.classList.remove('editing');
     labelModeSwitch();
-    clearEditError();
     editArea.blur();
   }
 
@@ -950,30 +973,158 @@ var __jsontreeMain = function () {
     btnEdit.title = editing ? 'View the tree' : 'Edit the source';
   }
 
-  function clearEditError() { editGutterInner.innerHTML = ''; }
+  // ----------------------------------------------------------------
+  // Drawing the editor
+  //
+  // The line numbers, the coloured copy of the text and the error marker are
+  // all derived from the textarea's text — and only for the lines on screen,
+  // plus a margin either side. Redrawing a whole document on every keystroke
+  // costs more than a tenth of a second at a few hundred kilobytes; a
+  // window of it costs the same whatever the document's size.
+  // ----------------------------------------------------------------
+  let editText = '';           // the textarea's text as of the last refresh
+  let editLineStarts = [0];    // offset at which each line begins
+  let editFault = null;        // the failed tryParse result, when invalid
+  let drawnFirst = 0;          // lines currently drawn, inclusive…
+  let drawnLast = -1;          // …and none yet
 
-  function markEditError(line) {
-    clearEditError();
-    const marker = document.createElement('div');
-    marker.className = 'edit-error-marker';
-    marker.style.top = ((line - 1) * EDIT_LINE_HEIGHT + EDIT_LINE_HEIGHT / 2 - 4) + 'px';
-    editGutterInner.appendChild(marker);
+  function indexLines(text) {
+    const starts = [0];
+    for (let i = text.indexOf('\n'); i !== -1; i = text.indexOf('\n', i + 1)) starts.push(i + 1);
+    return starts;
   }
 
-  function validateEditBuffer() {
-    const res = tryParse(editArea.value);
-    if (res.ok) {
-      clearEditError();
-      restoreStatus();
+  // A lexer, not the parser: it colours whatever is there, valid or not, so
+  // one typo does not strip the colour from everything after it. A JSON
+  // string cannot span lines, so an unterminated one ends at the newline —
+  // which is also what lets any run of whole lines be coloured on its own.
+  const TOKEN = /"(?:[^"\\\n]|\\.)*"?|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|\b(?:true|false|null)\b/g;
+  const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;' };
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>]/g, (c) => HTML_ESCAPES[c]);
+  }
+
+  // A string is a key when the next thing after it is a colon.
+  function isKeyAt(text, end) {
+    let i = end;
+    while (text[i] === ' ' || text[i] === '\t' || text[i] === '\n') i++;
+    return text[i] === ':';
+  }
+
+  function colourJson(text) {
+    let html = '';
+    let done = 0;
+    let m;
+    TOKEN.lastIndex = 0;
+    while ((m = TOKEN.exec(text)) !== null) {
+      const tok = m[0];
+      const end = m.index + tok.length;
+      const c = tok[0];
+      let cls;
+      if (c === '"') {
+        // Keys stay in the default ink, so they need no element of their own.
+        if (isKeyAt(text, end)) continue;
+        cls = 'tok-str';
+      } else if (c === 't' || c === 'f') {
+        cls = 'tok-bool';
+      } else if (c === 'n') {
+        cls = 'tok-null';
+      } else {
+        cls = 'tok-num';
+      }
+      html += escapeHtml(text.slice(done, m.index)) +
+              '<span class="' + cls + '">' + escapeHtml(tok) + '</span>';
+      done = end;
+    }
+    return html + escapeHtml(text.slice(done));
+  }
+
+  // `faultAt` is where the JSON went wrong, as an offset into `text`, or -1.
+  // From there to the end of its line is underlined and left uncoloured.
+  function colourWithFault(text, faultAt) {
+    if (faultAt < 0 || faultAt > text.length) return colourJson(text);
+    let eol = text.indexOf('\n', faultAt);
+    if (eol === -1) eol = text.length;
+    return colourJson(text.slice(0, faultAt)) +
+           '<span class="tok-error">' + escapeHtml(text.slice(faultAt, eol)) + '</span>' +
+           colourJson(text.slice(eol));
+  }
+
+  function drawEditLines(first, last) {
+    drawnFirst = first;
+    drawnLast = last;
+
+    let numbers = String(first + 1);
+    for (let n = first + 2; n <= last + 1; n++) numbers += '\n' + n;
+    editLineNumbers.textContent = numbers;
+
+    const start = editLineStarts[first];
+    const end = last + 1 < editLineStarts.length ? editLineStarts[last + 1] - 1 : editText.length;
+    // Too much on screen at once to colour — one enormous line, in practice.
+    // The textarea shows its own text instead.
+    const plain = end - start > HIGHLIGHT_LIMIT;
+    editWrap.classList.toggle('plain', plain);
+    if (plain) {
+      editHighlight.textContent = '';
     } else {
-      markEditError(res.line);
-      showError(res.message);
+      editHighlight.innerHTML = colourWithFault(
+        editText.slice(start, end), editFault ? editFault.at - start : -1);
+    }
+
+    // The marker lies over the offending line's number, repeating it in red.
+    const old = editGutterInner.querySelector('.edit-error-marker');
+    if (old) old.remove();
+    const faultLine = editFault ? editFault.line - 1 : -1;
+    if (faultLine >= first && faultLine <= last) {
+      const marker = document.createElement('div');
+      marker.className = 'edit-error-marker';
+      marker.textContent = faultLine + 1;
+      marker.style.top = ((faultLine - first) * EDIT_LINE_HEIGHT) + 'px';
+      editGutterInner.appendChild(marker);
     }
   }
 
+  // Neither the gutter nor the coloured copy scrolls: both are slid to
+  // wherever the textarea is, and redrawn when it has moved past what was
+  // drawn. `redraw` forces that, for when the text itself has changed.
+  function placeEditLines(redraw) {
+    const top = editArea.scrollTop;
+    const count = editLineStarts.length;
+    const firstSeen = Math.min(count - 1, Math.floor(top / EDIT_LINE_HEIGHT));
+    const lastSeen = Math.min(count - 1, Math.floor((top + editArea.clientHeight) / EDIT_LINE_HEIGHT));
+    if (redraw || firstSeen < drawnFirst || lastSeen > drawnLast) {
+      drawEditLines(Math.max(0, firstSeen - EDIT_OVERSCAN), Math.min(count - 1, lastSeen + EDIT_OVERSCAN));
+    }
+    const dy = drawnFirst * EDIT_LINE_HEIGHT - top;
+    editGutterInner.style.transform = 'translateY(' + dy + 'px)';
+    editHighlight.style.transform = 'translate(' + (-editArea.scrollLeft) + 'px, ' + dy + 'px)';
+  }
+
+  // Anything that changes the textarea's text without the reader typing it has
+  // to come through here afterwards, or the page keeps showing the old text.
+  function refreshEditor() {
+    editText = editArea.value;
+    const res = tryParse(editText);
+    editFault = res.ok ? null : res;
+    editLineStarts = indexLines(editText);
+    // The gutter is as wide as the last line's number, not the widest drawn.
+    editGutter.style.setProperty('--digits', String(editLineStarts.length).length);
+    placeEditLines(true);
+    return res;
+  }
+
+  function validateEditBuffer() {
+    const res = refreshEditor();
+    if (res.ok) restoreStatus();
+    else showError(res.message);
+  }
+
   editArea.addEventListener('input', validateEditBuffer);
-  editArea.addEventListener('scroll', () => {
-    editGutterInner.style.transform = 'translateY(' + (-editArea.scrollTop) + 'px)';
+  editArea.addEventListener('scroll', () => placeEditLines(false));
+  // A taller window shows lines that were never drawn.
+  window.addEventListener('resize', () => {
+    if (appEl.classList.contains('editing')) placeEditLines(false);
   });
 
   btnEdit.addEventListener('click', () => {
@@ -999,7 +1150,7 @@ var __jsontreeMain = function () {
     const text = JSON.stringify(res.data, null, indent);
     if (appEl.classList.contains('editing')) {
       editArea.value = text;
-      clearEditError();
+      refreshEditor();
     } else {
       enterEdit(text);
     }
@@ -1053,8 +1204,7 @@ var __jsontreeMain = function () {
   function doClear() {
     if (appEl.classList.contains('editing')) {
       editArea.value = '';
-      clearEditError();
-      restoreStatus();
+      validateEditBuffer();
       return;
     }
     loadParsed(null, { trulyEmpty: true });

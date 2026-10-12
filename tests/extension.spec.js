@@ -115,6 +115,10 @@ test('renders a JSON URL in the tree viewer', async () => {
   expect(JSON.parse(raw).address.city).toBe('Springfield');
   expect(raw).toContain('\n  "name": "John"');
 
+  // The editor is numbered and coloured here too, inside someone else's page.
+  await expect(page.locator('#edit-line-numbers')).toContainText('1');
+  await expect(page.locator('#edit-highlight .tok-str', { hasText: '"Springfield"' })).toBeVisible();
+
   // No leftovers from the raw document.
   await expect(page.locator('pre')).toHaveCount(0);
 

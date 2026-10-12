@@ -18,7 +18,7 @@ changing behaviour, and update it when behaviour changes.**
 npm install                      # once
 npx playwright install chromium  # once
 
-npm test                         # build the extension, then run all 63 tests
+npm test                         # build the extension, then run all 70 tests
 npm run build:extension          # copy the app into extension/vendor/
 
 npx http-server . -p 8080 -c-1   # serve locally at http://localhost:8080
@@ -53,6 +53,14 @@ npx playwright test --reporter=line              # quieter output
   the editor. Use the `type()` helper in `tests/app.spec.js`, which only presses
   it when the tree is showing. `window.jsontree.load()` is what moves to the
   tree — it is how the extension, and the tests' `load()` helper, get there.
+- **What you read in the editor is not the textarea.** Its own glyphs are
+  transparent; `#edit-highlight` behind it is the coloured copy that shows, and
+  only the lines on screen are drawn. So anything that sets `editArea.value`
+  must call `refreshEditor()` afterwards or the page keeps showing the old
+  text, and the two elements must share every metric that places a glyph — one
+  CSS rule holds them, and `EDIT_LINE_HEIGHT` in `js/app.js` tracks its
+  line-height. `#edit-highlight` is deliberately not a `<pre>`: the extension
+  tells a raw JSON page by its `<pre>`.
 - **Don't trust `JSON.parse`'s message for an error position.** Truncated input
   raises `Unexpected end of JSON input` with no position at all. `locateJsonError()`
   in `js/app.js` re-walks the text itself and must stay exactly as strict as the

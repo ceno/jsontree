@@ -143,8 +143,28 @@ One line, 24px, always present.
 
 ### Source editor
 
-`Edit` swaps the tree for a monospaced textarea plus a 16px marker gutter, and
-`View` — the same button — swaps back.
+`Edit` swaps the tree for the source — monospaced, 12.5px on a 20px line, with
+a gutter of line numbers beside it — and `View`, the same button, swaps back.
+
+The text is in colour. Values take the colour of their type, from the same
+tokens as the tree's icons: strings, numbers, booleans and null. Keys and
+punctuation stay in the default ink.
+
+- The colouring comes from a lexer, not the parser, so it colours whatever is
+  there. One typo costs one line its colour, not everything after it.
+- The text is drawn twice. The textarea takes the typing, the caret and the
+  selection, but its own glyphs are transparent; a coloured copy behind it is
+  what shows. The two must agree on every metric that places a glyph.
+- Only the lines on screen are drawn, plus a margin above and below — numbers
+  and colour alike — and they are redrawn as the editor scrolls. Drawing
+  therefore costs the same in a 2 MB document as in a small one, where
+  redrawing the whole document on each keystroke measured about 130ms at
+  290 KB. This relies on JSON tokens never crossing a line break.
+- More than 100,000 characters on screen at once — in practice one enormous
+  line, such as a large minified document — is not coloured: the textarea
+  shows its own text, plain. The line numbers stay.
+- The gutter is 46px, which holds four digits, and widens with the number of
+  lines beyond that.
 Validation runs on every keystroke. Leaving the editor requires JSON that
 parses — otherwise the error stands and the editor stays open, rather than
 silently discarding the edit. Opening it puts the caret at the top.
@@ -158,8 +178,9 @@ and the error reported.
 ### Errors
 
 No modal dialogs anywhere. Invalid JSON is reported in the status bar as
-`Invalid JSON — line 3, column 3: expected "," or "}"`, with a red dot in the
-editor gutter on the offending line.
+`Invalid JSON — line 3, column 3: expected "," or "}"`. In the editor the
+offending line's number turns red and bold with a dot beside it, and the text
+from the fault to the end of that line takes a wavy red underline.
 
 `JSON.parse` is the parser, but it is not a reliable source of *position*: the
 common truncated-input case raises `Unexpected end of JSON input`, which carries
@@ -207,8 +228,11 @@ connector columns, paths, arrow navigation), find (highlighting, counting, revea
 palette (fuzzy filter, running a command), the toolbar (which actions show in
 which view, each of them against the document and the clipboard, and that
 Format and Minify leave the clipboard alone), the editor (round-trip, refusing
-to close while invalid), error positions including truncated input, and the
-theme override in both directions.
+to close while invalid, line numbers, colouring by type, the coloured copy
+lying exactly over the textarea, escaping, the fault underline, drawing the
+right lines wherever a long document is scrolled to, and the plain fallback),
+error positions including truncated input, and the theme override in both
+directions.
 `tests/extension.spec.js` drives the real extension in a browser.
 
 ## Non-goals

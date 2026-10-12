@@ -11,7 +11,8 @@ Runs entirely in the browser; nothing you paste is sent anywhere.
 - Command palette on ⌘K with fuzzy filtering
 - A status bar that always shows validity, size and the selected node's path
   (`results[1].author.orcid`), click to copy
-- Source editor with precise line/column error reporting — no modal dialogs
+- Source editor with line numbers, syntax colouring and precise line/column
+  error reporting — no modal dialogs
 - Format, Minify, Copy, Paste and Clear
 - Light and dark, following the system appearance
 

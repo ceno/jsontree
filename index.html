@@ -66,11 +66,17 @@
         <div class="empty-hint">Press <kbd>Edit</kbd> and paste JSON, or press <kbd>⌘K</kbd> and choose Paste.</div>
       </div>
 
+      <!-- The text is drawn twice: the textarea takes the typing but its
+           glyphs are transparent, and the coloured copy behind it is what
+           shows. -->
       <div id="edit-wrap">
-        <div id="edit-gutter"><div id="edit-gutter-inner"></div></div>
-        <textarea id="edit-area" spellcheck="false" autocomplete="off"
-                  placeholder="Paste the JSON code here (your code is not saved anywhere)"
-                  aria-label="JSON source"></textarea>
+        <div id="edit-gutter" aria-hidden="true"><div id="edit-gutter-inner"><div id="edit-line-numbers"></div></div></div>
+        <div id="edit-code">
+          <div id="edit-highlight" aria-hidden="true"></div>
+          <textarea id="edit-area" spellcheck="false" autocomplete="off"
+                    placeholder="Paste the JSON code here (your code is not saved anywhere)"
+                    aria-label="JSON source"></textarea>
+        </div>
       </div>
     </div>
 
