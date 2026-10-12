@@ -138,6 +138,114 @@ test('4. expander toggles a subtree', async ({ page }) => {
   await expect(city).toBeHidden();
 });
 
+// A document long enough to scroll, ending in a container: sixty leaves, a
+// closed container among them, and `last` at the very end.
+const LONG = JSON.stringify(Object.assign(
+  { early: { a: 1, b: 2, c: 3 } },
+  Object.fromEntries(Array.from({ length: 60 }, (_, i) => ['k' + i, i])),
+  { last: { a: 1, b: 2, c: 3 } }
+));
+const treeScrollTo = (page, y) =>
+  page.locator('#tree-scroll').evaluate((el, y) => { el.scrollTop = y; }, y);
+const rowTop = async (page, path) =>
+  (await page.locator(`.tree-row[data-path="${path}"]`).boundingBox()).y;
+/** The path of the row lying under a point, as the pointer would find it. */
+const rowAt = (page, x, y) => page.evaluate(([x, y]) => {
+  const el = document.elementFromPoint(x, y);
+  const row = el && el.closest('.tree-row');
+  return row && row.dataset.path;
+}, [x, y]);
+
+// Closing a container at the end of the document used to pull every row
+// down, and opening it again to push them back up: either way the pointer was
+// left on some other row than the one it had pressed.
+test('4b. a row stays under the pointer when it is closed and opened at the end of the document', async ({ page }) => {
+  await load(page, LONG);
+  await expand(page, 'last');
+  await treeScrollTo(page, 1e6);
+
+  const arrow = await page.locator('.tree-row[data-path="last"] .expander-box').boundingBox();
+  const x = arrow.x + arrow.width / 2;
+  const y = arrow.y + arrow.height / 2;
+  const settled = () => page.waitForFunction(() => {
+    const children = document.querySelector('.tree-row[data-path="last"]')
+      .parentElement.querySelector(':scope > .tree-children');
+    return children.style.height === '';
+  });
+
+  // The pointer is put down once and never moved again.
+  await page.mouse.click(x, y);
+  await settled();
+  await expect(page.locator('.tree-row[data-path="last.a"]')).toBeHidden();
+  expect(await rowAt(page, x, y)).toBe('last');
+
+  await page.mouse.click(x, y);
+  await settled();
+  await expect(page.locator('.tree-row[data-path="last.a"]')).toBeVisible();
+  expect(await rowAt(page, x, y)).toBe('last');
+  expect((await page.locator('.tree-row[data-path="last"] .expander-box').boundingBox()).y).toBe(arrow.y);
+});
+
+// A window growing taller over the end of the document pulls the scroll
+// position back as well, and the browser's scroll anchoring used to answer
+// the next opening by scrolling the tree to make that good.
+test('4b2. a row opened after the window has grown stays where it is', async ({ page }) => {
+  await load(page, LONG);
+  await treeScrollTo(page, 1e6);
+  const size = page.viewportSize();
+  await page.setViewportSize({ width: size.width, height: size.height + 100 });
+
+  const before = await rowTop(page, 'last');
+  await expand(page, 'last');
+  expect(await rowTop(page, 'last')).toBe(before);
+});
+
+test('4c. the blank left by closing a container is gone once it is scrolled out of view', async ({ page }) => {
+  await load(page, LONG);
+  await expand(page, 'last');
+  await treeScrollTo(page, 1e6);
+  // How far the last row showing ends above the bottom of the tree's window.
+  const blank = () => page.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll('#tree-container .tree-row'))
+      .filter(r => r.offsetParent !== null);
+    return document.getElementById('tree-scroll').getBoundingClientRect().bottom -
+           rows[rows.length - 1].getBoundingClientRect().bottom;
+  });
+  const atEnd = await blank();
+
+  // Three rows went, and nothing came down to take their place.
+  await toggle(page, 'last');
+  expect(await blank()).toBe(atEnd + 3 * 21);
+
+  // Scrolled away from, the blank is not there to scroll back to. The app
+  // hears of a scroll at the next frame, so it is given one.
+  await treeScrollTo(page, 0);
+  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+  await treeScrollTo(page, 1e6);
+  expect(await blank()).toBe(atEnd);
+});
+
+test('4d. Expand All and Collapse All leave the first row in view where it was', async ({ page }) => {
+  await load(page, LONG);
+  await treeScrollTo(page, 400);
+  const first = await page.evaluate(() => {
+    const edge = document.getElementById('tree-scroll').getBoundingClientRect().top;
+    return Array.from(document.querySelectorAll('#tree-container .tree-row'))
+      .find(r => r.getBoundingClientRect().top >= edge).dataset.path;
+  });
+  const before = await rowTop(page, first);
+  const earlyA = page.locator('.tree-row[data-path="early.a"]');
+
+  // `early` opens above the rows in view, and closes again.
+  await page.locator('#btn-expand-all').click();
+  await expect(earlyA).toBeVisible();
+  expect(await rowTop(page, first)).toBe(before);
+
+  await page.locator('#btn-collapse-all').click();
+  await expect(earlyA).toBeHidden();
+  expect(await rowTop(page, first)).toBe(before);
+});
+
 test('5. connector columns stay in layout at every depth', async ({ page }) => {
   await load(page);
   const rows = page.locator('#tree-container .tree-row');

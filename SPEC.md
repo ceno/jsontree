@@ -117,6 +117,16 @@ selection to sit in.
   putting an empty string on the clipboard.
 - Expand/collapse animates over 250ms. A toggle arriving mid-animation is
   ignored rather than queued.
+- Opening or closing a container with the pointer never moves its row: the
+  pointer that pressed a triangle is still on that triangle afterwards,
+  wherever the tree is scrolled to. Closing a container at the end of the
+  document therefore leaves a blank below the last row rather than letting
+  the rows above slide down into the space. Rows opened later fill the blank,
+  and once scrolled out of view it is gone. The browser's scroll anchoring is
+  off for the tree, since it scrolls the tree of its own accord at a later
+  opening.
+- Expand All and Collapse All leave the first row in view where it was, if it
+  is still showing.
 
 Hovering a row previews its path in the status bar; leaving restores the
 selected row's path. Selection always wins over the preview — moving by
@@ -306,6 +316,8 @@ error, rather than leaving a blank window.
 chromium. `tests/app.spec.js` covers the shell (opening in the editor when
 empty and on the tree when handed a document, the empty state, constant chrome
 heights), the tree (labels, type icons, container counts, expand/collapse,
+a row staying under the pointer at the end of the document, Expand All and
+Collapse All keeping the reader's place,
 connector columns, the indent guides keeping clear of the triangles, paths,
 arrow navigation), search over the tree (tinting,
 counting, revealing, stepping, clearing) and in the editor (marking every

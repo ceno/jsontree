@@ -662,11 +662,69 @@ var __jsontreeMain = function () {
     anim.raf = requestAnimationFrame(step);
   }
 
+  // Only the pointer comes through here, and it is resting on this row.
   function toggleNode(nodeEl, box) {
     const childrenEl = nodeEl.querySelector(':scope > .tree-children');
     if (!childrenEl) return;
     if (nodeAnimMap.has(nodeEl)) return;   // mid-animation: ignore
-    startAnim(nodeEl, box, childrenEl.classList.contains('collapsed'));
+    const expanding = childrenEl.classList.contains('collapsed');
+    if (!expanding) holdTreeLength();
+    startAnim(nodeEl, box, expanding);
+  }
+
+  // ----------------------------------------------------------------
+  // Keeping a row under the pointer
+  //
+  // A container opens and closes below its own row, so the row has no reason
+  // to move, and the pointer that pressed its triangle should still be on it
+  // afterwards. Near the end of the document two things moved it anyway.
+  // Closing a container there left the tree scrolled past its new end, so the
+  // browser pulled the scroll position back and every row slid down. Its
+  // scroll anchoring then remembered where the top row had been, and at the
+  // next opening scrolled to put it back — and every row slid up.
+  //
+  // Anchoring is switched off in the stylesheet. The pull-back is headed off
+  // here: before a container closes under the pointer the tree is given a
+  // floor, a min-height that keeps it just long enough to stay scrolled where
+  // it is. Rows opened later fill the floor, and it is lowered as the reader
+  // scrolls back up, so the blank it leaves is never scrolled back into.
+  // ----------------------------------------------------------------
+  let treeFloor = 0;
+
+  function setTreeFloor(px) {
+    treeFloor = px;
+    treeContainer.style.minHeight = px ? px + 'px' : '';
+  }
+
+  // How long the tree has to be to stay scrolled where it is. Scrolled to the
+  // top it needs no floor. The height counted is the one with the horizontal
+  // scrollbar in it: closing a container can take that scrollbar away, and
+  // the rows it was covering then count as in view too.
+  function treeLengthInUse() {
+    const top = treeScroll.scrollTop;
+    return top > 0 ? Math.ceil(top + treeScroll.offsetHeight) : 0;
+  }
+
+  function holdTreeLength() {
+    setTreeFloor(treeLengthInUse());
+  }
+
+  function lowerTreeFloor() {
+    if (treeFloor) setTreeFloor(Math.min(treeFloor, treeLengthInUse()));
+  }
+
+  // Opening or closing everything changes the tree above the rows in view as
+  // well as below them. With anchoring off nothing else keeps the reader's
+  // place, so the first row in view is put back where it was — if it is still
+  // showing; closed away, there is no place left to keep.
+  function keepingPlace(change) {
+    const edge = treeScroll.getBoundingClientRect().top;
+    const row = visibleRows().find(r => r.getBoundingClientRect().bottom > edge);
+    const was = row && row.getBoundingClientRect().top;
+    change();
+    if (row && row.offsetParent !== null) {
+      treeScroll.scrollTop += row.getBoundingClientRect().top - was;
+    }
   }
 
   function setExpanded(nodeEl, expanded) {
@@ -711,14 +769,16 @@ var __jsontreeMain = function () {
 
   function expandAll() {
     if (isEmpty) { showStatus('Nothing to expand'); return; }
-    allNodes().forEach(n => setExpanded(n, true));
+    keepingPlace(() => allNodes().forEach(n => setExpanded(n, true)));
     showStatus('Expanded all');
   }
 
   function collapseAll() {
     if (isEmpty) { showStatus('Nothing to collapse'); return; }
+    // A floor left standing would keep the tree scrolled into nothing at all.
+    setTreeFloor(0);
     // Leave the root open, otherwise the window looks empty.
-    allNodes().forEach((n, idx) => setExpanded(n, idx === 0));
+    keepingPlace(() => allNodes().forEach((n, idx) => setExpanded(n, idx === 0)));
     dropStaleHover();
     // The selection may now be inside a closed container; move it to the
     // nearest row still on screen rather than leaving it stranded.
@@ -952,6 +1012,8 @@ var __jsontreeMain = function () {
     rawText = trulyEmpty ? '' : JSON.stringify(data, null, 2);
 
     appEl.classList.toggle('empty', trulyEmpty);
+    // The floor was for the pointer's sake in the tree these rows replace.
+    setTreeFloor(0);
     if (trulyEmpty) {
       treeContainer.innerHTML = '';
       selectedRow = null;
@@ -1369,7 +1431,10 @@ var __jsontreeMain = function () {
   // A taller window shows lines that were never drawn.
   window.addEventListener('resize', () => {
     if (appEl.classList.contains('editing')) placeEditLines(false);
+    lowerTreeFloor();
   });
+  // Scrolled back up, or in a shorter window, less of the floor is in use.
+  treeScroll.addEventListener('scroll', lowerTreeFloor);
 
   btnEdit.addEventListener('click', () => {
     if (appEl.classList.contains('editing')) exitEdit();

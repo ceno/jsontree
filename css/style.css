@@ -537,10 +537,14 @@ button {
   background: var(--bg-content);
 }
 
+/* Scroll anchoring is off: it scrolls the tree to put a row back where it
+   once was, which takes the row being opened out from under the pointer.
+   See "Keeping a row under the pointer" in js/app.js. */
 #tree-scroll {
   width: 100%;
   height: 100%;
   overflow: auto;
+  overflow-anchor: none;
   background: var(--bg-content);
 }
 
