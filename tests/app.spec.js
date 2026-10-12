@@ -542,7 +542,7 @@ test('21d. the error marker tracks the offending line', async ({ page }) => {
   // It lies over line 4's number and repeats it in red.
   await expect(page.locator('.edit-error-marker')).toHaveText('4');
   const top = await page.locator('.edit-error-marker').evaluate(el => parseFloat(el.style.top));
-  expect(top).toBe(60);   // three 20px lines down, not on line 1
+  expect(top).toBe(54);   // three 18px lines down, not on line 1
 });
 
 test('22. the editor refuses to close while the JSON is invalid', async ({ page }) => {
@@ -1069,7 +1069,7 @@ test('58. a long document is numbered and coloured wherever it is scrolled to', 
 
   // Row 2500 is lines 10002–10005; its name is on 10004. Put line 10001 at
   // the top of the editor.
-  await page.locator('#edit-area').evaluate((el) => { el.scrollTop = 10000 * 20; });
+  await page.locator('#edit-area').evaluate((el) => { el.scrollTop = 10000 * 18; });
   await expect.poll(async () => (await lineNumbers(page)).includes('10004')).toBe(true);
 
   const at = await page.evaluate(() => {
@@ -1087,8 +1087,8 @@ test('58. a long document is numbered and coloured wherever it is scrolled to', 
     };
   });
   // Line 10004 starts 12px of padding plus three lines below the top edge.
-  expect(at.text).toBeGreaterThanOrEqual(72);
-  expect(at.text).toBeLessThan(92);
+  expect(at.text).toBeGreaterThanOrEqual(66);
+  expect(at.text).toBeLessThan(84);
   expect(Math.abs(at.number - at.text)).toBeLessThan(1);
 });
 
@@ -1399,7 +1399,7 @@ test('68. in a narrow window the search field folds to its magnifier and opens o
 // ----------------------------------------------------------------
 // Where line n lies on the page, worked out from the textarea itself.
 const lineTop = (page, n) => page.locator('#edit-area').evaluate((el, n) =>
-  el.getBoundingClientRect().top + parseFloat(getComputedStyle(el).paddingTop) + n * 20 - el.scrollTop, n);
+  el.getBoundingClientRect().top + parseFloat(getComputedStyle(el).paddingTop) + n * 18 - el.scrollTop, n);
 const bandTop = async (page) => (await page.locator('#edit-current-line').boundingBox()).y;
 
 test('69. the caret\'s line is banded and its number is in full ink', async ({ page }) => {
@@ -1420,7 +1420,7 @@ test('69. the caret\'s line is banded and its number is in full ink', async ({ p
   // number takes the text's ink rather than the gutter's.
   const box = await band.boundingBox();
   const code = await page.locator('#edit-code').boundingBox();
-  expect(box.height).toBe(20);
+  expect(box.height).toBe(18);
   expect(box.x).toBe(code.x);
   expect(box.width).toBe(code.width);
   const ink = (sel) => page.locator(sel).evaluate(el => getComputedStyle(el).color);
@@ -1432,7 +1432,7 @@ test('69. the caret\'s line is banded and its number is in full ink', async ({ p
   for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowUp');
   await expect(number).toHaveText('15');
   expect(await bandTop(page)).toBe(await lineTop(page, 14));
-  await page.locator('#edit-area').click({ position: { x: 120, y: 12 + 2 * 20 + 10 } });
+  await page.locator('#edit-area').click({ position: { x: 120, y: 12 + 2 * 18 + 9 } });
   await expect(number).toHaveText('3');
   expect(await bandTop(page)).toBe(await lineTop(page, 2));
 

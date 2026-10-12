@@ -563,13 +563,13 @@ button {
 .tree-row {
   display: flex;
   align-items: center;
-  height: 24px;
+  height: 20px;
   cursor: pointer;
   padding-right: 8px;
   margin: 1px 5px;
   white-space: nowrap;
   position: relative;
-  border-radius: 6px;
+  border-radius: 5px;
   overflow: hidden;
 }
 
@@ -610,7 +610,7 @@ button {
 .tc {
   display: inline-flex;
   width: 18px;
-  height: 24px;
+  height: 20px;
   flex-shrink: 0;
   position: relative;
 }
@@ -780,7 +780,7 @@ button {
   border-right: 1px solid var(--hairline);
   font-family: var(--font-mono);
   font-size: 12.5px;
-  line-height: 20px;
+  line-height: 18px;
   color: var(--text-tertiary);
   text-align: right;
   user-select: none;
@@ -804,7 +804,7 @@ button {
   position: absolute;
   left: 0;
   width: 100%;
-  height: 20px;
+  height: 18px;
   padding-right: 8px;
   background: var(--bg-content);
   color: var(--text-primary);
@@ -816,7 +816,7 @@ button {
   position: absolute;
   left: 0;
   width: 100%;
-  height: 20px;
+  height: 18px;
   padding-right: 8px;
   background: var(--bg-content);
   color: var(--danger);
@@ -827,7 +827,7 @@ button {
   content: '';
   position: absolute;
   left: 2px;
-  top: 7px;
+  top: 6px;
   width: 5px;
   height: 5px;
   border-radius: 50%;
@@ -854,7 +854,7 @@ button {
   padding: 12px 16px;
   font-family: var(--font-mono);
   font-size: 12.5px;
-  line-height: 20px;
+  line-height: 18px;
   letter-spacing: normal;
   white-space: pre;
   tab-size: 2;
@@ -875,7 +875,7 @@ button {
   top: 12px;
   left: 0;
   right: 0;
-  height: 20px;
+  height: 18px;
   background: var(--line-current);
   pointer-events: none;
 }
@@ -897,7 +897,7 @@ button {
 
 /* Text too long to draw again gets the current match alone, as a box put
    where it was measured to be. */
-#edit-marks mark.boxed { position: absolute; height: 20px; }
+#edit-marks mark.boxed { position: absolute; height: 18px; }
 .edit-probe { position: absolute; visibility: hidden; }
 
 #edit-area {

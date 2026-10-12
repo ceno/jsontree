@@ -86,7 +86,9 @@ them, so an action with no button in the current view does not exist there.
 
 An 18px indent column grid, faint 1px indent guides (never elbows), CSS
 disclosure triangles, a type icon on every row, and an inset rounded
-source-list selection in the system accent.
+source-list selection in the system accent. Rows are 20px high and 1px apart
+— a little more air than the editor's 18px lines, for the icons and the
+selection to sit in.
 
 - Root is labelled `JSON` and starts expanded; deeper levels start collapsed.
 - Container rows show the key; leaf rows show `key : value`, strings quoted.
@@ -189,7 +191,7 @@ One line, 24px, always present.
 
 ### Source editor
 
-`Edit` swaps the tree for the source — monospaced, 12.5px on a 20px line, with
+`Edit` swaps the tree for the source — monospaced, 12.5px on an 18px line, with
 a gutter of line numbers beside it — and `View`, the same button, swaps back.
 
 The text is in colour. Values take the colour of their type, from the same

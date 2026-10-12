@@ -44,7 +44,7 @@ var __jsontreeMain = function () {
   const statusLeft = document.getElementById('status-left');
   const statusPath = document.getElementById('status-path');
 
-  const EDIT_LINE_HEIGHT = 20;            // px; must track the editor's line-height in style.css
+  const EDIT_LINE_HEIGHT = 18;            // px; must track the editor's line-height in style.css
   const EDIT_OVERSCAN = 40;               // lines drawn beyond each edge of the editor
   const HIGHLIGHT_LIMIT = 100000;         // characters; more than this on screen is not coloured
   const PATH_HINT = '⌘F Search';
