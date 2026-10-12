@@ -85,10 +85,17 @@ var __jsontreeMain = function () {
   }
 
   // results[1].author.orcid — the notation the status bar shows and copies.
+  //
+  // A key is only written with a dot when it cannot be confused for anything
+  // else. Otherwise it is bracket-quoted, so a key literally called "a.b" is
+  // ["a.b"] and stays distinct from a nested a -> b, and the empty key is [""]
+  // rather than colliding with the root's own empty path.
+  const PLAIN_KEY = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+
   function joinPath(base, key, parentIsArray) {
     if (parentIsArray) return base + '[' + key + ']';
-    if (base === '') return key;
-    return base + '.' + key;
+    if (PLAIN_KEY.test(key)) return base === '' ? key : base + '.' + key;
+    return base + '[' + JSON.stringify(key) + ']';
   }
 
   function byteSize(str) { return new Blob([str]).size; }
@@ -130,37 +137,66 @@ var __jsontreeMain = function () {
       if (text.substr(i, w.length) === w) { i += w.length; return true; }
       return false;
     }
+    function digits() {
+      const from = i;
+      while (i < n && text[i] >= '0' && text[i] <= '9') i++;
+      return i - from;
+    }
     function str() {
       const open = i;
       i++; // opening quote
       while (i < n) {
         const c = text[i];
         if (c === '\\') {
-          i++;
-          if (i >= n) fail('unterminated string', open);
-          i++;
-          continue;
+          const esc = text[i + 1];
+          if (i + 1 >= n) fail('unterminated string', open);
+          if ('"\\/bfnrt'.indexOf(esc) !== -1) { i += 2; continue; }
+          if (esc === 'u') {
+            for (let k = 2; k < 6; k++) {
+              const h = text[i + k];
+              if (h === undefined || !/[0-9a-fA-F]/.test(h)) {
+                fail('bad \\u escape — four hex digits required', i);
+              }
+            }
+            i += 6;
+            continue;
+          }
+          // Shown verbatim: JSON.stringify would double the backslash and
+          // report \\x for what the reader actually typed as \x.
+          fail('unknown escape "\\' + (esc || '') + '"', i);
         }
         if (c === '"') { i++; return; }
+        // JSON forbids raw control characters inside a string; they have to be
+        // escaped. \n is the common one and reads as an unterminated string.
         if (c === '\n') fail('unterminated string', open);
+        if (c < ' ') fail('unescaped control character in string', i);
         i++;
       }
       fail('unterminated string', open);
     }
+    // Strict JSON numbers: no leading zeros, no trailing dot, no bare sign,
+    // no empty exponent. JSON.parse rejects all of these, so the scanner must
+    // too — otherwise it finds nothing wrong and we lose the position.
     function num() {
-      const start = i;
-      if (text[i] === '-') i++;
-      while (i < n && text[i] >= '0' && text[i] <= '9') i++;
+      if (text[i] === '-') {
+        i++;
+        if (i >= n) fail('expected a digit after "-"');
+      }
+      if (text[i] === '0') {
+        i++;
+        if (text[i] >= '0' && text[i] <= '9') fail('numbers may not have a leading zero', i);
+      } else if (!digits()) {
+        fail('expected a digit');
+      }
       if (text[i] === '.') {
         i++;
-        while (i < n && text[i] >= '0' && text[i] <= '9') i++;
+        if (!digits()) fail('expected a digit after the decimal point');
       }
       if (text[i] === 'e' || text[i] === 'E') {
         i++;
         if (text[i] === '+' || text[i] === '-') i++;
-        while (i < n && text[i] >= '0' && text[i] <= '9') i++;
+        if (!digits()) fail('expected a digit in the exponent');
       }
-      if (i === start) fail('expected a number');
     }
     function value() {
       ws();
@@ -179,9 +215,11 @@ var __jsontreeMain = function () {
       if (text[i] === '}') { i++; return; }
       for (;;) {
         ws();
+        if (i >= n) fail('unexpected end of input');
         if (text[i] !== '"') fail('expected a property name');
         str();
         ws();
+        if (i >= n) fail('unexpected end of input');
         if (text[i] !== ':') fail('expected ":" after the property name');
         i++;
         value();
@@ -212,7 +250,9 @@ var __jsontreeMain = function () {
       return null;
     } catch (e) {
       if (e.__at === undefined) return null;
-      const lc = lineColOf(text, Math.min(e.__at, Math.max(0, n - 1)));
+      // Do not clamp: when the input simply ran out, the position one past the
+      // end is the honest answer, and clamping reports the previous line.
+      const lc = lineColOf(text, Math.min(e.__at, n));
       return { line: lc.line, col: lc.col, reason: e.__reason };
     }
   }
@@ -230,8 +270,33 @@ var __jsontreeMain = function () {
           message: 'Invalid JSON — line ' + where.line + ', column ' + where.col + ': ' + where.reason
         };
       }
-      return { ok: false, line: 1, message: 'Invalid JSON — ' + e.message };
+      // The scanner agreed the text is well-formed but JSON.parse did not.
+      // Fall back to the engine's own position — modern V8 appends
+      // "(line N column M)", older builds only "at position N" — and keep the
+      // message in our own shape so the status bar never changes format.
+      const lc = positionFromMessage(text, e.message);
+      return {
+        ok: false,
+        line: lc.line,
+        message: 'Invalid JSON — line ' + lc.line + ', column ' + lc.col + ': ' + tidyReason(e.message)
+      };
     }
+  }
+
+  function positionFromMessage(text, message) {
+    const lineCol = /\(line (\d+) column (\d+)\)/.exec(message);
+    if (lineCol) return { line: +lineCol[1], col: +lineCol[2] };
+    const pos = /position (\d+)/.exec(message);
+    if (pos) return lineColOf(text, Math.min(+pos[1], text.length));
+    return { line: 1, col: 1 };
+  }
+
+  function tidyReason(message) {
+    return message
+      .replace(/^JSON\.parse:\s*/, '')
+      .replace(/\s*in JSON\b.*$/, '')
+      .replace(/\s*at position \d+.*$/, '')
+      .trim() || 'could not be parsed';
   }
 
   // ----------------------------------------------------------------
@@ -243,12 +308,18 @@ var __jsontreeMain = function () {
            countNodes(parsedData) + ' nodes';
   }
 
+  // Re-derives both the text and its severity. describeEditBuffer() returns the
+  // parse error for an invalid buffer, so the error class has to be re-applied
+  // here — otherwise a transient ("Copied path") expires and brings the error
+  // text back in neutral grey, reporting a broken document as fine.
   function restoreStatus() {
-    statusLeft.classList.remove('error');
-    statusLeft.textContent = appEl.classList.contains('editing')
-      ? describeEditBuffer()
-      : describeDocument();
+    const editing = appEl.classList.contains('editing');
+    const text = editing ? describeEditBuffer() : describeDocument();
+    statusLeft.textContent = text;
+    statusLeft.classList.toggle('error', editing && isErrorText(text));
   }
+
+  function isErrorText(text) { return text.indexOf('Invalid JSON') === 0; }
 
   function describeEditBuffer() {
     const text = editArea.value;
@@ -294,11 +365,21 @@ var __jsontreeMain = function () {
     setPath(selectedRow ? selectedRow._nodeData.path : null);
   }
 
-  statusPath.addEventListener('click', () => {
-    if (lastPath === null) return;
-    copyText(lastPath);
+  // What the user would mean by "this node": the selection if there is one,
+  // otherwise whatever they are pointing at.
+  function activePath() {
+    if (selectedRow) return selectedRow._nodeData.path;
+    return hoverPath;
+  }
+
+  statusPath.addEventListener('click', () => copyPath(lastPath));
+
+  function copyPath(path) {
+    if (path === null) { showStatus('No path'); return; }
+    if (path === '') { showStatus('The root has no path'); return; }
+    copyText(path);
     showStatus('Copied path');
-  });
+  }
 
   // ----------------------------------------------------------------
   // Clipboard
@@ -555,13 +636,22 @@ var __jsontreeMain = function () {
   }
 
   function expandAll() {
+    if (isEmpty) { showStatus('Nothing to expand'); return; }
     allNodes().forEach(n => setExpanded(n, true));
     showStatus('Expanded all');
   }
 
   function collapseAll() {
+    if (isEmpty) { showStatus('Nothing to collapse'); return; }
     // Leave the root open, otherwise the window looks empty.
     allNodes().forEach((n, idx) => setExpanded(n, idx === 0));
+    dropStaleHover();
+    // The selection may now be inside a closed container; move it to the
+    // nearest row still on screen rather than leaving it stranded.
+    if (selectedRow && selectedRow.offsetParent === null) {
+      const rows = visibleRows();
+      if (rows.length) selectRow(rows[0]);
+    }
     showStatus('Collapsed all');
   }
 
@@ -572,7 +662,19 @@ var __jsontreeMain = function () {
     if (selectedRow) selectedRow.classList.remove('selected');
     rowEl.classList.add('selected');
     selectedRow = rowEl;
-    if (hoverPath === null) setPath(rowEl._nodeData.path);
+    // Selecting always wins over a hover preview. Moving by keyboard fires no
+    // mouseleave, so without this the bar keeps showing whatever the pointer
+    // happens to be resting on while the selection walks away from it.
+    hoverPath = null;
+    setPath(rowEl._nodeData.path);
+  }
+
+  // A hovered row can be collapsed out of existence without a mouseleave.
+  function dropStaleHover() {
+    if (hoverPath !== null) {
+      hoverPath = null;
+      setPath(selectedRow ? selectedRow._nodeData.path : null);
+    }
   }
 
   function visibleRows() {
@@ -685,6 +787,17 @@ var __jsontreeMain = function () {
   }
 
   function openFind() {
+    // The find bar searches tree labels. Over the editor the tree is hidden, so
+    // opening it would report matches and a path for rows nobody can see, and
+    // steal the caret out of the textarea.
+    if (appEl.classList.contains('editing')) {
+      showStatus('Find searches the tree — leave the editor first');
+      return;
+    }
+    if (isEmpty) {
+      showStatus('Nothing to find');
+      return;
+    }
     findOpen = true;
     findbar.classList.add('open');
     btnFindOpen.classList.add('on');
@@ -753,19 +866,21 @@ var __jsontreeMain = function () {
   // ----------------------------------------------------------------
   // Source editor
   // ----------------------------------------------------------------
-  function enterEdit() {
-    editArea.value = rawText;
+  // `text` overrides the current document — used when something unparseable
+  // arrives and the only useful thing to do is show it to the reader.
+  function enterEdit(text) {
+    editArea.value = text === undefined ? rawText : text;
     appEl.classList.add('editing');
     btnEdit.classList.add('on');
     if (findOpen) closeFind();
-    clearEditError();
     editArea.focus();
     // focus() leaves the caret at the end, which scrolls a long document out
-    // of view; start at the top where the reader expects to be.
+    // of view; start at the top where the reader expects to be. This has to
+    // come after the value is assigned — setting .value resets the caret.
     editArea.setSelectionRange(0, 0);
     editArea.scrollTop = 0;
     editGutterInner.style.transform = 'translateY(0px)';
-    restoreStatus();
+    validateEditBuffer();
   }
 
   // Leaving requires a document we can render; the status bar already says
@@ -860,11 +975,7 @@ var __jsontreeMain = function () {
     showStatus('Copied value');
   }
 
-  function doCopyPath() {
-    if (lastPath === null) { showStatus('No path'); return; }
-    copyText(lastPath);
-    showStatus('Copied path');
-  }
+  function doCopyPath() { copyPath(activePath()); }
 
   function doPaste() {
     if (!navigator.clipboard || !navigator.clipboard.readText) {
@@ -877,7 +988,13 @@ var __jsontreeMain = function () {
         validateEditBuffer();
         return;
       }
-      if (loadText(text)) showStatus('Pasted');
+      if (loadText(text)) {
+        showStatus('Pasted');
+      } else {
+        // loadText has already put the parse error in the status bar; open the
+        // editor on the text so it is reachable rather than lost.
+        enterEdit(text);
+      }
     }).catch(() => {
       showError('Clipboard access denied — press ⌘V in the editor instead.');
     });
@@ -1001,7 +1118,10 @@ var __jsontreeMain = function () {
     action.run();
   }
 
+  let paletteReturnFocus = null;
+
   function openPalette() {
+    paletteReturnFocus = document.activeElement;
     paletteOverlay.classList.add('open');
     btnPaletteOpen.classList.add('on');
     paletteInput.value = '';
@@ -1009,9 +1129,18 @@ var __jsontreeMain = function () {
     paletteInput.focus();
   }
 
+  // Hand focus back on the way out. Leaving it in the hidden palette input
+  // makes the window keydown handler treat every arrow key as typing, so tree
+  // navigation goes dead until the user clicks something.
   function closePalette() {
     paletteOverlay.classList.remove('open');
     btnPaletteOpen.classList.remove('on');
+    paletteInput.blur();
+    const back = paletteReturnFocus;
+    paletteReturnFocus = null;
+    if (back && back !== paletteInput && document.contains(back) && back.focus) {
+      back.focus();
+    }
   }
 
   paletteInput.addEventListener('input', renderPalette);
@@ -1027,6 +1156,7 @@ var __jsontreeMain = function () {
       runPaletteAction(paletteActive);
     } else if (e.key === 'Escape') {
       e.preventDefault();
+      e.stopPropagation();
       closePalette();
     }
   });
@@ -1039,7 +1169,12 @@ var __jsontreeMain = function () {
   // Keyboard
   // ----------------------------------------------------------------
   window.addEventListener('keydown', (e) => {
-    if (paletteOverlay.classList.contains('open')) return;   // palette owns its keys
+    if (paletteOverlay.classList.contains('open')) {
+      // The palette owns its keys while the input has focus, but Tab can move
+      // focus into the page behind it — Escape has to keep working from there.
+      if (e.key === 'Escape') { e.preventDefault(); closePalette(); }
+      return;
+    }
 
     const mod = e.metaKey || e.ctrlKey;
     const key = e.key.toLowerCase();
@@ -1077,13 +1212,9 @@ var __jsontreeMain = function () {
   // ----------------------------------------------------------------
   window.jsontree = {
     load: function (text) {
-      if (!loadText(text)) {
-        // Unparseable: show the source so the problem is visible and fixable
-        // rather than leaving a blank window.
-        enterEdit();
-        editArea.value = text;
-        validateEditBuffer();
-      }
+      // Unparseable: show the source so the problem is visible and fixable
+      // rather than leaving a blank window.
+      if (!loadText(text)) enterEdit(text);
     }
   };
 

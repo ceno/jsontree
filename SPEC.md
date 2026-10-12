@@ -49,17 +49,28 @@ inset rounded source-list selection in the system accent.
 - Container rows show the key; leaf rows show `key : value`, strings quoted.
 - Array children are keyed by index.
 - Every row carries `data-path` — `results[1].author.orcid` — which the status
-  bar displays and the Copy Path command copies.
+  bar displays and the Copy Path command copies. A key is written with a dot
+  only when it cannot be mistaken for anything else; otherwise it is
+  bracket-quoted, so the key `a.b` is `["a.b"]` and stays distinct from a
+  nested `a` → `b`. Paths are therefore unique across the document. The root's
+  path is empty, shown as `(root)`; copying it is refused rather than silently
+  putting an empty string on the clipboard.
 - Expand/collapse animates over 250ms. A toggle arriving mid-animation is
   ignored rather than queued.
 
 Hovering a row previews its path in the status bar; leaving restores the
-selected row's path. Nothing is selected on load, so the status bar can show
+selected row's path. Selection always wins over the preview — moving by
+keyboard fires no `mouseleave`, so without that the bar would keep showing
+whatever the pointer happened to be resting on. Copy Path copies the selected
+row, falling back to the hovered one only when nothing is selected. Nothing is selected on load, so the status bar can show
 the `⌘K Commands · ⌘F Find` hint until the reader picks a node.
 
 ### Find bar
 
-⌘F opens it; it is not permanent chrome. Incremental: every keystroke
+⌘F opens it; it is not permanent chrome. It searches tree labels, so it
+refuses to open over the source editor or an empty document and says why —
+otherwise it would report matches and a path for rows nobody can see, and take
+the caret out of the textarea. Incremental: every keystroke
 re-searches node labels, wraps each hit in `mark.find-match`, and reports
 `N of M`. Moving to a match expands its ancestors, selects the row and scrolls
 it into view. ⌘G / ⇧⌘G and the chevrons cycle with wraparound. Escape or `Done`
@@ -103,6 +114,16 @@ common truncated-input case raises `Unexpected end of JSON input`, which carries
 no position at all, so a message-scraping implementation reports line 1 for a
 fault anywhere in the document. `locateJsonError()` therefore re-walks the text
 with its own scanner whenever parsing failed, and is engine-independent.
+
+That scanner has to be exactly as strict as `JSON.parse`, not merely close to
+it. Anything it accepts that the engine rejects — a leading zero, a bare `-`, a
+trailing decimal point, an empty exponent, an unknown `\x` escape, a short
+`\u`, a raw control character in a string — leaves it finding nothing wrong,
+and the position is lost. Where it genuinely cannot place the fault it reads the
+engine's own `(line N column M)` or `at position N` rather than assuming line 1.
+
+For input that simply ran out, the reported column is one past the last
+character — the position where the input ended, not the character before it.
 
 ## Theming
 

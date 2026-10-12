@@ -294,8 +294,45 @@ test('20. invalid JSON reports a real line and column, with no modal', async ({ 
 test('21. truncated JSON still reports where the input ran out', async ({ page }) => {
   await page.goto('/');
   await type(page, '[1,2,');
+  // Column 6 is one past the last character — the position where the input
+  // ran out, not the last character before it.
   await expect(page.locator('#status-left'))
-    .toHaveText('Invalid JSON — line 1, column 5: unexpected end of input');
+    .toHaveText('Invalid JSON — line 1, column 6: unexpected end of input');
+});
+
+// Truncation on a later line must report that line, not be clamped back.
+test('21b. end-of-input on a later line reports that line', async ({ page }) => {
+  await page.goto('/');
+  await type(page, '{"a": 1,\n');
+  await expect(page.locator('#status-left'))
+    .toHaveText('Invalid JSON — line 2, column 1: unexpected end of input');
+});
+
+// These all parse cleanly under a lenient scanner, so the position used to be
+// lost and every one of them was reported as line 1 with a raw V8 message.
+test('21c. malformed literals report a real position and reason', async ({ page }) => {
+  await page.goto('/');
+  const cases = [
+    ['[01]',        'Invalid JSON — line 1, column 3: numbers may not have a leading zero'],
+    ['[1.]',        'Invalid JSON — line 1, column 4: expected a digit after the decimal point'],
+    ['[-]',         'Invalid JSON — line 1, column 3: expected a digit'],
+    ['[1e]',        'Invalid JSON — line 1, column 4: expected a digit in the exponent'],
+    ['["\\x"]',     'Invalid JSON — line 1, column 3: unknown escape "\\x"'],
+    ['["\\u12"]',   'Invalid JSON — line 1, column 3: bad \\u escape — four hex digits required'],
+  ];
+  await page.locator('#btn-edit').click();
+  for (const [input, expected] of cases) {
+    await page.locator('#edit-area').fill(input);
+    await expect(page.locator('#status-left')).toHaveText(expected);
+  }
+});
+
+test('21d. the error marker tracks the offending line', async ({ page }) => {
+  await page.goto('/');
+  await type(page, '{\n  "a": 1,\n  "b": "x",\n  "c": "\\x"\n}');
+  await expect(page.locator('#status-left')).toContainText('line 4');
+  const top = await page.locator('.edit-error-marker').evaluate(el => parseFloat(el.style.top));
+  expect(top).toBeGreaterThan(60);   // line 4, not line 1 (~7.6px)
 });
 
 test('22. the editor refuses to close while the JSON is invalid', async ({ page }) => {
@@ -331,4 +368,172 @@ test('24. an explicit theme overrides the OS preference in both directions', asy
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
   expect(await bg()).toBe(lightBg);
+});
+
+// ----------------------------------------------------------------
+// Regressions found by QA against commit 3660872
+// ----------------------------------------------------------------
+
+// D1: focus was left in the hidden palette input, so the window keydown
+// handler treated every arrow key as typing and tree navigation went dead.
+test('25. closing the palette hands focus back and arrows still work', async ({ page }) => {
+  await load(page);
+  await page.keyboard.press('Meta+k');
+  await page.keyboard.press('Escape');
+  expect(await page.evaluate(() => document.activeElement.id)).not.toBe('palette-input');
+
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('.tree-row.selected')).toHaveCount(1);
+});
+
+// D1: Escape inside the palette bubbled to the window handler, which saw a
+// closed palette and went on to close the find bar underneath it.
+test('26. Escape in the palette does not also close the find bar', async ({ page }) => {
+  await load(page);
+  await page.keyboard.press('Meta+f');
+  await page.locator('#find-input').fill('name');
+  await page.keyboard.press('Meta+k');
+  await page.keyboard.press('Escape');
+
+  await expect(page.locator('#findbar')).toHaveClass(/open/);
+  await expect(page.locator('#find-input')).toHaveValue('name');
+});
+
+// D2: restoreStatus() stripped the error class, so a transient expired and
+// brought the error text back in neutral grey.
+test('27. a transient message does not downgrade a standing error', async ({ page }) => {
+  await load(page);
+  await type(page, '{"a":');
+  await expect(page.locator('#status-left')).toHaveClass(/error/);
+
+  await page.keyboard.press('Meta+Alt+c');          // transient: "No path"
+  await expect(page.locator('#status-left')).toHaveText('Invalid JSON — line 1, column 6: unexpected end of input');
+  await expect(page.locator('#status-left')).toHaveClass(/error/);
+});
+
+// D5: find searched the hidden tree while the editor was open, reporting a
+// match count and a path for rows nobody could see.
+test('28. find refuses to open over the source editor', async ({ page }) => {
+  await load(page);
+  await page.locator('#btn-edit').click();
+  await page.keyboard.press('Meta+f');
+
+  await expect(page.locator('#findbar')).not.toHaveClass(/open/);
+  await expect(page.locator('#edit-area')).toBeFocused();
+  await expect(page.locator('#status-left')).toContainText('leave the editor first');
+});
+
+// D4: enterEdit() set the caret before the value was assigned, and assigning
+// .value resets it to the end.
+test('29. loading unparseable text opens the editor at the top', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => window.jsontree.load('{\n  "a": 1\n  "b": 2\n}'));
+  await expect(page.locator('#edit-area')).toBeVisible();
+  expect(await page.locator('#edit-area').evaluate(el => el.selectionStart)).toBe(0);
+  await expect(page.locator('#status-left')).toContainText('line 3');
+});
+
+// D6: an unparseable paste flashed an error over the unchanged document and
+// the pasted text was unreachable.
+test('30. pasting unparseable text opens it in the editor', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await load(page);
+  await page.evaluate(() => navigator.clipboard.writeText('not json at all'));
+  await page.locator('#btn-paste').click();
+
+  await expect(page.locator('#edit-area')).toBeVisible();
+  await expect(page.locator('#edit-area')).toHaveValue('not json at all');
+  await expect(page.locator('#status-left')).toHaveClass(/error/);
+});
+
+// D7: the status bar followed the pointer, so arrow navigation left it stale
+// and Copy Path copied the hovered row instead of the selected one.
+test('31. the path follows the selection, not the pointer', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await load(page);
+  await page.locator('.tree-row[data-path="age"]').hover();
+  await page.locator('.tree-row[data-path="age"]').click();
+  await expect(page.locator('#status-path')).toHaveText('age');
+
+  // Pointer stays on `age` while the selection walks away from it.
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('#status-path')).toHaveText('active');
+
+  await page.keyboard.press('Meta+Alt+c');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('active');
+});
+
+// D8: the root's path is '', which was copied as an empty string and reported
+// as a success.
+test('32. copying the root path is refused, not a silent empty copy', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await load(page);
+  await page.evaluate(() => navigator.clipboard.writeText('SENTINEL'));
+  await page.locator('.tree-row').first().click();
+  await expect(page.locator('#status-path')).toHaveText('(root)');
+
+  await page.locator('#status-path').click();
+  await expect(page.locator('#status-left')).toHaveText('The root has no path');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('SENTINEL');
+});
+
+// D8 / QA question 1: keys containing the path notation's own punctuation used
+// to produce a path identical to a genuinely nested one.
+test('33. awkward keys get unambiguous, unique paths', async ({ page }) => {
+  await load(page, '{"":1,"a.b":{"c":2},"a":{"b":{"c":9}},"x[0]":3,"has space":4}');
+  await page.keyboard.press('Meta+Alt+ArrowRight');
+
+  const paths = await page.evaluate(() =>
+    [...document.querySelectorAll('.tree-row')].map(r => r.dataset.path));
+  expect(new Set(paths).size).toBe(paths.length);      // no duplicates
+  expect(paths).toContain('[""]');
+  expect(paths).toContain('["a.b"].c');
+  expect(paths).toContain('a.b.c');
+  expect(paths).toContain('["x[0]"]');
+  expect(paths).toContain('["has space"]');
+});
+
+// D13: Expand/Collapse All reported success on an empty document.
+test('34. expand and collapse report honestly on an empty document', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Meta+Alt+ArrowRight');
+  await expect(page.locator('#status-left')).toHaveText('Nothing to expand');
+  await page.keyboard.press('Meta+Alt+ArrowLeft');
+  await expect(page.locator('#status-left')).toHaveText('Nothing to collapse');
+});
+
+// D12: a 0-height box still paints its border under box-sizing: border-box.
+test('35. the closed find bar takes no vertical space', async ({ page }) => {
+  await load(page);
+  expect(await page.locator('#findbar').evaluate(el => el.getBoundingClientRect().height)).toBe(0);
+  await page.keyboard.press('Meta+f');
+  await expect(page.locator('#findbar')).toHaveClass(/open/);
+  await page.waitForTimeout(250);
+  expect(await page.locator('#findbar').evaluate(el => el.getBoundingClientRect().height)).toBe(34);
+});
+
+// D9: the toolbar had no give, so the find and palette buttons were pushed
+// off the right-hand edge on a narrow window.
+test('36. the toolbar keeps every control reachable when narrow', async ({ page }) => {
+  await load(page);
+  for (const width of [1180, 620, 460, 380]) {
+    await page.setViewportSize({ width, height: 700 });
+    const overflow = await page.locator('#toolbar').evaluate(
+      el => el.scrollWidth - el.clientWidth);
+    expect(overflow, `toolbar overflows at ${width}px`).toBeLessThanOrEqual(0);
+    for (const id of ['btn-find-open', 'btn-palette-open', 'btn-edit']) {
+      const box = await page.locator('#' + id).boundingBox();
+      expect(box.x + box.width, `${id} off-screen at ${width}px`).toBeLessThanOrEqual(width);
+    }
+  }
+});
+
+// D14: Tab moved focus out of the palette and Escape then did nothing.
+test('37. Escape closes the palette even after Tab moves focus out', async ({ page }) => {
+  await load(page);
+  await page.keyboard.press('Meta+k');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#palette-overlay')).not.toHaveClass(/open/);
 });

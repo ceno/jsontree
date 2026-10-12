@@ -265,6 +265,22 @@ button {
   border-radius: 6px;
   white-space: nowrap;
   transition: background-color 0.1s ease;
+  min-width: 0;
+}
+
+/* Narrow windows: give up the wordmark, then the separators and some padding,
+   so the find and palette buttons stay reachable instead of being pushed off
+   the right-hand edge. The icon buttons never shrink. */
+@media (max-width: 620px) {
+  .brand-name { display: none; }
+  .tb-sep { margin: 0 3px; }
+  .tb-btn { padding: 5px 7px; }
+}
+
+@media (max-width: 460px) {
+  .brand { display: none; }
+  .tb-sep { display: none; }
+  .tb-btn { padding: 5px 5px; font-size: 12px; }
 }
 
 .tb-btn:hover { background: var(--control-fill); }
@@ -300,14 +316,17 @@ button {
   overflow: hidden;
   flex-shrink: 0;
   background: var(--bg-sidebar);
-  border-bottom: 1px solid transparent;
+  /* The border width is animated to zero as well: with box-sizing: border-box
+     a 0-height box still paints a 1px border, which left a hairline of chrome
+     behind when the bar was closed. */
+  border-bottom: 0 solid var(--hairline);
   padding: 0 12px;
   transition: height 0.16s cubic-bezier(.3, .9, .4, 1);
 }
 
 #findbar.open {
   height: 34px;
-  border-bottom-color: var(--hairline);
+  border-bottom-width: 1px;
 }
 
 #findbar > svg {
